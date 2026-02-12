@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimpleSheet - Call Sheet Builder</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Custom Fonts & Styles -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Oswald:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --sheet-width: 210mm;
+            --sheet-height: 297mm;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate 900 */
+            color: #e2e8f0;
+            overflow: hidden; /* App handles scrolling */
+        }
+
+        .font-header { font-family: 'Oswald', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        /* --- PREVIEW SCALING --- */
+        .preview-wrapper {
+            transform-origin: top center;
+            transition: transform 0.2s;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        /* --- PRINT STYLES (The Output) --- */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+
+            /* GLOBAL RESET */
+            body, html {
+                background-color: white !important;
+                width: 100% !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+            }
+
+            /* HIDE UI ELEMENTS */
+            .app-ui > aside,          /* Sidebar */
+            .app-ui > main > header,  /* Top Header */
+            .tabs,                    /* Editor Tabs */
+            .library-view,            /* Library Screen */
+            .editor-view,             /* Editor Screen */
+            .floating-controls,       /* Zoom Pill */
+            .no-print {
+                display: none !important;
+            }
+
+            /* UNLOCK LAYOUT CONTAINERS */
+            /* We need to break the flex/grid locks so the page flows naturally */
+            #root, 
+            .app-ui, 
+            .app-ui > main, 
+            .preview-view {
+                display: block !important;
+                position: static !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+                background: white !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            /* CONFIGURE THE SHEET */
+            .print-sheet {
+                display: block !important;
+                position: relative !important;
+                margin: 0 auto !important; /* Center it */
+                left: auto !important;
+                top: auto !important;
+                transform: none !important; /* CRITICAL: Disables the screen zoom */
+                width: 210mm !important;    /* Force strict A4 width */
+                min-height: 297mm !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important; /* Padding is handled by inner container */
+            }
+
+            /* COLOR & CONTRAST SAFETY */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            
+            /* Hide toggle buttons in print */
+            button {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- ICONS WRAPPER ---
+        const Icon = ({ name, size = 16, className = "" }) => {
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [name]);
+            return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
+        };
+
+        // --- UTILS ---
+        const generateId = () => Math.random().toString(36).substr(2, 9);
+        
+        const sumPages = (scenes, hiddenSet) => {
+            let eighths = 0;
+            scenes.forEach(s => {
+                if(!s.pages || hiddenSet.has(s.id)) return;
+                const parts = s.pages.toString().split('/');
+                if(parts.length === 2) eighths += parseInt(parts[0]);
+                else eighths += parseFloat(s.pages) * 8;
+            });
+            const whole = Math.floor(eighths / 8);
+            const rem = eighths % 8;
+            return rem === 0 ? `${whole}` : whole === 0 ? `${rem}/8` : `${whole} ${rem}/8`;
+        };
+
+        const wmoCodeToText = (code) => {
+            const codes = {
+                0: "Clear Sky", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
+                45: "Fog", 48: "Depositing Rime Fog",
+                51: "Light Drizzle", 53: "Mod. Drizzle", 55: "Dense Drizzle",
+                61: "Slight Rain", 63: "Mod. Rain", 65: "Heavy Rain",
+                71: "Slight Snow", 73: "Mod. Snow", 75: "Heavy Snow",
+                95: "Thunderstorm", 96: "Thunderstorm/Hail"
+            };
+            return codes[code] || "Variable";
+        };
+
+        // --- INITIAL DATA ---
+        const initialData = {
+            id: generateId(),
+            name: "New Call Sheet",
+            lastModified: Date.now(),
+            hidden: {
+                'general.scriptVer': true,
+                'general.parking': true,
+                'general.wifi': true,
+                'times.breakfast': true,
+                'general.police': true,
+                'general.fire': true,
+                'notes.walkies': false
+            }, 
+            meta: { watermark: "DRAFT" },
+            production: { 
+                title: "PROJECT TITLE", 
+                company: "INDEPENDENT STUDIOS", 
+                producers: "Jane Doe, John Smith", 
+                director: "Alice Director", 
+                ad: "Bob Assistant",
+                officePhone: "555-0199",
+                officeEmail: "production@indie.film"
+            },
+            general: { 
+                date: new Date().toISOString().split('T')[0], 
+                dayCurrent: 1, 
+                dayTotal: 15, 
+                zipCode: "90210",
+                scriptVer: "White",
+                weather: "72°F - Sunny", 
+                sunrise: "06:30", 
+                sunset: "19:45",
+                nearestHospital: "City General (2.4 miles)",
+                police: "911 or Local Station",
+                fire: "911 or Local Station",
+                safetyNotes: "Safety Meeting at Call. Hydrate often.",
+                wifi: "Network: Studio_Guest / Pass: film123",
+                parking: "Crew park in Lot B. Shuttles every 15 mins."
+            },
+            times: { 
+                breakfast: "06:30",
+                crewCall: "07:00", 
+                shootingCall: "08:00", 
+                lunch: "13:00", 
+                wrap: "19:00" 
+            },
+            locations: [
+                { id: 1, type: "BASECAMP", name: "Parking Lot C", address: "100 Studio Dr, Los Angeles, CA", note: "Crew park here", isMain: false },
+                { id: 2, type: "LOCATION", name: "The Warehouse", address: "500 Industrial Way, Los Angeles, CA", note: "Shuttle from Base", isMain: true }
+            ],
+            schedule: [
+                { id: 1, time: "07:00", desc: "CREW CALL / BREAKFAST" },
+                { id: 2, time: "08:00", desc: "SHOOTING CALL - Sc 24" },
+                { id: 3, time: "13:00", desc: "LUNCH (30 Minutes)" },
+                { id: 4, time: "19:00", desc: "ESTIMATED WRAP" }
+            ],
+            scenes: [
+                { id: 1, number: "24", intExt: "INT", set: "WAREHOUSE", dayNight: "DAY", cast: "1, 2", pages: "4/8", location: "Warehouse", desc: "The deal goes bad." },
+                { id: 2, number: "25", intExt: "EXT", set: "ALLEYWAY", dayNight: "NIGHT", cast: "1", pages: "2/8", location: "Warehouse", desc: "Running away." }
+            ],
+            cast: [
+                { id: 1, name: "Liam Lead", character: "JACK", idNum: "1", status: "W", pickup: "06:30", call: "07:00", hmw: "07:15", set: "08:00", notes: "" },
+                { id: 2, name: "Sarah Star", character: "JILL", idNum: "2", status: "SW", pickup: "08:00", call: "08:30", hmw: "08:45", set: "09:30", notes: "" }
+            ],
+            crew: [
+                { id: "dept1", department: "CAMERA", members: [{ id: "c1", position: "DP", name: "Chivo", call: "07:00" }] },
+                { id: "dept2", department: "SOUND", members: [{ id: "s1", position: "Mixer", name: "Sound Guy", call: "07:00" }] }
+            ],
+            notes: {
+                general: "Let's make a movie! Please verify your timecards.",
+                department: "Camera: New LUTs loaded. \nArt: Please reset Sc 24 after take 1.",
+                walkies: [{ ch: 1, use: "MAIN" }, { ch: 2, use: "OPEN" }, { ch: 3, use: "CAM" }]
+            }
+        };
+
+        // --- REUSABLE UI COMPONENTS ---
+
+        const ToggleInput = ({ label, value, onChange, path, hiddenMap, onToggle, type = "text", className = "", placeholder="" }) => {
+            const isHidden = hiddenMap[path];
+            return (
+                <div className={`flex flex-col ${className} group`}>
+                    <div className="flex justify-between items-center mb-1">
+                        {label && <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{label}</label>}
+                        <button 
+                            onClick={() => onToggle(path)} 
+                            title={isHidden ? "Show in Preview" : "Hide in Preview"}
+                            className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`}
+                        >
+                            <Icon name={isHidden ? "eye-off" : "eye"} size={12} />
+                        </button>
+                    </div>
+                    <input 
+                        type={type} 
+                        value={value || ""} 
+                        onChange={e => onChange(e.target.value)}
+                        placeholder={placeholder}
+                        className={`bg-gray-800 border ${isHidden ? 'border-dashed border-gray-700 opacity-60' : 'border-gray-700'} text-gray-200 rounded px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all placeholder-gray-600`}
+                    />
+                </div>
+            );
+        };
+
+        const ToggleTextArea = ({ label, value, onChange, path, hiddenMap, onToggle, rows = 3 }) => {
+            const isHidden = hiddenMap[path];
+            return (
+                <div className="flex flex-col group">
+                    <div className="flex justify-between items-center mb-1">
+                        {label && <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{label}</label>}
+                        <button 
+                            onClick={() => onToggle(path)} 
+                            className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`}
+                        >
+                            <Icon name={isHidden ? "eye-off" : "eye"} size={12} />
+                        </button>
+                    </div>
+                    <textarea 
+                        value={value || ""} 
+                        onChange={e => onChange(e.target.value)}
+                        rows={rows}
+                        className={`bg-gray-800 border ${isHidden ? 'border-dashed border-gray-700 opacity-60' : 'border-gray-700'} text-gray-200 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none resize-none placeholder-gray-600`}
+                    />
+                </div>
+            );
+        };
+
+        const SectionHeader = ({ title, icon }) => (
+            <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-700 text-blue-400">
+                <Icon name={icon} size={18} />
+                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-200">{title}</h3>
+            </div>
+        );
+
+        // --- MAIN APP ---
+        const App = () => {
+            const [data, setData] = useState(initialData);
+            const [view, setView] = useState('library');
+            const [activeTab, setActiveTab] = useState('general');
+            const [scale, setScale] = useState(0.8);
+            const [library, setLibrary] = useState([]);
+            const [weatherLoading, setWeatherLoading] = useState(false);
+
+            useEffect(() => {
+                const savedLib = localStorage.getItem('simpleSheet_library');
+                if (savedLib) {
+                    try { setLibrary(JSON.parse(savedLib)); } catch(e) {}
+                }
+                setTimeout(() => window.lucide && window.lucide.createIcons(), 100);
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('simpleSheet_library', JSON.stringify(library));
+            }, [library]);
+
+            // --- ACTIONS ---
+            const saveToLibrary = () => {
+                const now = Date.now();
+                const newData = { ...data, lastModified: now };
+                setData(newData);
+                
+                setLibrary(prev => {
+                    const existingIdx = prev.findIndex(item => item.id === newData.id);
+                    if (existingIdx >= 0) {
+                        const newLib = [...prev];
+                        newLib[existingIdx] = newData;
+                        return newLib;
+                    }
+                    return [newData, ...prev];
+                });
+                alert("Sheet saved to Library!");
+            };
+
+            const loadSheet = (sheet) => {
+                setData(sheet);
+                setView('editor');
+            };
+
+            const deleteSheet = (id) => {
+                if(confirm("Are you sure? This cannot be undone.")) {
+                    setLibrary(prev => prev.filter(item => item.id !== id));
+                    if (data.id === id) setData(initialData);
+                }
+            };
+
+            const createNewSheet = () => {
+                setData({ ...initialData, id: generateId(), name: "New Call Sheet", lastModified: Date.now() });
+                setView('editor');
+            };
+
+            const exportJSON = () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", `${data.name.replace(/\s+/g, '_')}_CallSheet.json`);
+                document.body.appendChild(downloadAnchorNode);
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
+            };
+
+            const importJSON = (event) => {
+                const fileReader = new FileReader();
+                fileReader.readAsText(event.target.files[0], "UTF-8");
+                fileReader.onload = e => {
+                    try {
+                        const parsed = JSON.parse(e.target.result);
+                        if (!parsed.production) throw new Error("Invalid Format");
+                        parsed.id = generateId(); // New ID on import to avoid conflicts
+                        setData(parsed);
+                        saveToLibrary(); // Auto save import
+                        setView('editor');
+                    } catch (err) {
+                        alert("Error importing file: Invalid JSON format.");
+                    }
+                };
+            };
+
+            const updateDeep = (path, value) => {
+                setData(prev => {
+                    const newData = { ...prev };
+                    let current = newData;
+                    const parts = path.split('.');
+                    for (let i = 0; i < parts.length - 1; i++) current = current[parts[i]];
+                    current[parts[parts.length - 1]] = value;
+                    return newData;
+                });
+            };
+
+            const toggleVisibility = (path) => {
+                setData(prev => {
+                    const newHidden = { ...prev.hidden };
+                    if (newHidden[path]) delete newHidden[path];
+                    else newHidden[path] = true;
+                    return { ...prev, hidden: newHidden };
+                });
+            };
+
+            const fetchWeather = async () => {
+                if (!data.general.zipCode) return alert("Please enter a Zip Code first.");
+                setWeatherLoading(true);
+                try {
+                    const geoRes = await fetch(`https://api.zippopotam.us/us/${data.general.zipCode}`);
+                    if (!geoRes.ok) throw new Error("Zip code not found");
+                    const geoData = await geoRes.json();
+                    const { latitude, longitude, "place name": city, state } = geoData.places[0];
+
+                    const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,sunrise,sunset&current_weather=true&temperature_unit=fahrenheit&timezone=auto`);
+                    const weatherData = await weatherRes.json();
+                    
+                    const today = weatherData.daily;
+                    const current = weatherData.current_weather;
+
+                    const weatherStr = `${Math.round(current.temperature)}°F - ${wmoCodeToText(current.weathercode)}`;
+                    const sr = new Date(today.sunrise[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
+                    const ss = new Date(today.sunset[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
+
+                    setData(prev => ({
+                        ...prev,
+                        general: {
+                            ...prev.general,
+                            weather: weatherStr,
+                            sunrise: sr,
+                            sunset: ss
+                        },
+                        locations: prev.locations.length === 0 ? [{ id: generateId(), type: "SHOOT", name: `${city}, ${state}`, address: "", isMain: true }] : prev.locations
+                    }));
+                } catch (e) {
+                    alert("Could not fetch weather: " + e.message);
+                } finally {
+                    setWeatherLoading(false);
+                }
+            };
+
+            const findHospital = () => {
+                const mainLoc = data.locations.find(l => l.isMain);
+                const query = mainLoc ? mainLoc.address : data.general.zipCode;
+                if (!query) return alert("Please set a Main Location address or Zip code.");
+                window.open(`https://www.google.com/maps/search/nearest+hospital+to+${encodeURIComponent(query)}`, '_blank');
+            };
+
+            // --- RENDERERS ---
+
+            const renderGeneral = () => (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-300">
+                    <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
+                        <SectionHeader title="Production Info" icon="clapperboard" />
+                        <div className="space-y-4">
+                            <ToggleInput label="Project Title" path="production.title" value={data.production.title} onChange={v => updateDeep('production.title', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            <ToggleInput label="Company" path="production.company" value={data.production.company} onChange={v => updateDeep('production.company', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <ToggleInput label="Director" path="production.director" value={data.production.director} onChange={v => updateDeep('production.director', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="1st AD" path="production.ad" value={data.production.ad} onChange={v => updateDeep('production.ad', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
+                            <ToggleInput label="Producers" path="production.producers" value={data.production.producers} onChange={v => updateDeep('production.producers', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <ToggleInput label="Office Phone" path="production.officePhone" value={data.production.officePhone} onChange={v => updateDeep('production.officePhone', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="Office Email" path="production.officeEmail" value={data.production.officeEmail} onChange={v => updateDeep('production.officeEmail', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
+                            
+                            {/* Advanced Production Fields */}
+                            <div className="pt-4 border-t border-gray-800">
+                                <p className="text-[10px] uppercase font-bold text-gray-600 mb-2">Optional Fields</p>
+                                <ToggleInput label="Script Version" path="general.scriptVer" value={data.general.scriptVer} onChange={v => updateDeep('general.scriptVer', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-8">
+                        <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
+                            <SectionHeader title="Logistics & Weather" icon="sun" />
+                            
+                            <div className="flex gap-2 items-end mb-4 bg-gray-800/50 p-3 rounded border border-gray-700">
+                                <div className="flex-grow">
+                                    <ToggleInput label="Zip Code" path="general.zipCode" value={data.general.zipCode} onChange={v => updateDeep('general.zipCode', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} placeholder="Enter Zip" />
+                                </div>
+                                <button 
+                                    onClick={fetchWeather} 
+                                    disabled={weatherLoading}
+                                    className="mb-0.5 h-[38px] px-4 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
+                                >
+                                    {weatherLoading ? <Icon name="loader-2" className="animate-spin" /> : <Icon name="cloud-lightning" />}
+                                    Auto-Fetch
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <ToggleInput type="date" label="Date" path="general.date" value={data.general.date} onChange={v => updateDeep('general.date', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <div className="flex gap-2">
+                                    <ToggleInput type="number" label="Day #" path="general.dayCurrent" value={data.general.dayCurrent} onChange={v => updateDeep('general.dayCurrent', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} className="w-1/2" />
+                                    <ToggleInput type="number" label="Total" path="general.dayTotal" value={data.general.dayTotal} onChange={v => updateDeep('general.dayTotal', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} className="w-1/2" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <ToggleInput type="time" label="Sunrise" path="general.sunrise" value={data.general.sunrise} onChange={v => updateDeep('general.sunrise', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput type="time" label="Sunset" path="general.sunset" value={data.general.sunset} onChange={v => updateDeep('general.sunset', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
+                            <ToggleInput label="Weather Summary" path="general.weather" value={data.general.weather} onChange={v => updateDeep('general.weather', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            
+                            {/* Advanced Logistics */}
+                            <div className="pt-4 border-t border-gray-800 space-y-4">
+                                <p className="text-[10px] uppercase font-bold text-gray-600">Optional Fields</p>
+                                <ToggleInput label="Wifi Info" path="general.wifi" value={data.general.wifi} onChange={v => updateDeep('general.wifi', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="Parking Notes" path="general.parking" value={data.general.parking} onChange={v => updateDeep('general.parking', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
+                            <SectionHeader title="Key Timings" icon="clock" />
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <ToggleInput type="time" label="Crew Call" path="times.crewCall" value={data.times.crewCall} onChange={v => updateDeep('times.crewCall', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput type="time" label="Shooting Call" path="times.shootingCall" value={data.times.shootingCall} onChange={v => updateDeep('times.shootingCall', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <ToggleInput type="time" label="Lunch" path="times.lunch" value={data.times.lunch} onChange={v => updateDeep('times.lunch', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput type="time" label="Est Wrap" path="times.wrap" value={data.times.wrap} onChange={v => updateDeep('times.wrap', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
+                             {/* Advanced Times */}
+                             <div className="pt-4 mt-4 border-t border-gray-800">
+                                <p className="text-[10px] uppercase font-bold text-gray-600 mb-2">Optional Fields</p>
+                                <ToggleInput type="time" label="Breakfast" path="times.breakfast" value={data.times.breakfast} onChange={v => updateDeep('times.breakfast', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderDynamicList = (key, columns, title) => {
+                const list = data[key];
+                
+                const addRow = () => {
+                    const newItem = { id: generateId() };
+                    columns.forEach(c => newItem[c.key] = "");
+                    if(key === 'locations' && list.length === 0) newItem.isMain = true;
+                    setData(p => ({...p, [key]: [...p[key], newItem]}));
+                };
+
+                const updateRow = (id, f, val) => {
+                    setData(p => ({
+                        ...p,
+                        [key]: p[key].map(item => {
+                            if (item.id !== id) return item;
+                            return { ...item, [f]: val };
+                        })
+                    }));
+                };
+
+                const setMainLocation = (id) => {
+                    setData(p => ({
+                        ...p,
+                        locations: p.locations.map(l => ({...l, isMain: l.id === id}))
+                    }));
+                };
+
+                const toggleRowVisibility = (id) => toggleVisibility(`${key}.${id}`);
+
+                const deleteRow = (id) => setData(p => ({ ...p, [key]: p[key].filter(i => i.id !== id) }));
+
+                return (
+                    <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl animate-in fade-in">
+                        <div className="flex justify-between items-center mb-6">
+                            <SectionHeader title={title} icon="list" />
+                            <button onClick={addRow} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 transition-colors">
+                                <Icon name="plus" size={14} /> ADD ROW
+                            </button>
+                        </div>
+
+                        <div className="space-y-2">
+                            {list.map((item, idx) => {
+                                const isRowHidden = data.hidden[`${key}.${item.id}`];
+                                return (
+                                    <div key={item.id} className={`flex gap-2 items-start p-2 rounded border transition-all ${isRowHidden ? 'bg-gray-900 border-gray-800 opacity-60' : 'bg-gray-800/50 border-gray-700/50 hover:border-blue-500/30'}`}>
+                                        
+                                        {/* Row Controls */}
+                                        <div className="flex flex-col gap-2 pt-2">
+                                            {key === 'locations' && (
+                                                <input 
+                                                    type="radio" 
+                                                    name="mainLoc" 
+                                                    checked={item.isMain} 
+                                                    onChange={() => setMainLocation(item.id)}
+                                                    title="Set as Main Location for Hospital Search"
+                                                    className="accent-blue-500 cursor-pointer"
+                                                />
+                                            )}
+                                            <button onClick={() => toggleRowVisibility(item.id)} className={`transition-colors ${isRowHidden ? 'text-blue-400' : 'text-gray-600 hover:text-blue-400'}`}>
+                                                <Icon name={isRowHidden ? "eye-off" : "eye"} size={14} />
+                                            </button>
+                                        </div>
+
+                                        <div className="flex-grow grid grid-cols-12 gap-2">
+                                            {columns.map(col => (
+                                                <div key={col.key} className={col.width}>
+                                                    <input
+                                                        type={col.type || "text"}
+                                                        placeholder={col.label}
+                                                        value={item[col.key] || ""}
+                                                        onChange={e => updateRow(item.id, col.key, e.target.value)}
+                                                        className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 text-xs py-1 px-1 outline-none text-gray-300 placeholder-gray-600"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button onClick={() => deleteRow(item.id)} className="text-red-900 hover:text-red-500 pt-1 transition-colors">
+                                            <Icon name="x" size={14} />
+                                        </button>
+                                    </div>
+                                )
+                            })}
+                            {list.length === 0 && <div className="text-center py-8 text-gray-600 italic text-sm">List is empty. Add a row to start.</div>}
+                        </div>
+
+                        {/* EMERGENCY CARD (Only in Locations Tab) */}
+                        {key === 'locations' && (
+                            <div className="mt-8 bg-red-900/20 border border-red-900/50 rounded-lg p-4">
+                                <SectionHeader title="Emergency Services" icon="siren" />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="text-[10px] font-bold text-red-400 uppercase">Nearest Hospital</label>
+                                            <button 
+                                                onClick={findHospital}
+                                                className="text-[10px] bg-red-900/60 hover:bg-red-800 px-2 py-0.5 rounded text-white border border-red-700 transition-colors flex items-center gap-1"
+                                            >
+                                                <Icon name="map" size={10} /> Find Near Main Loc
+                                            </button>
+                                        </div>
+                                        <ToggleInput 
+                                            path="general.nearestHospital"
+                                            value={data.general.nearestHospital} 
+                                            onChange={v => updateDeep('general.nearestHospital', v)} 
+                                            hiddenMap={data.hidden} onToggle={toggleVisibility}
+                                        />
+                                    </div>
+                                    <div className="space-y-4">
+                                         <ToggleInput label="Police Station" path="general.police" value={data.general.police} onChange={v => updateDeep('general.police', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                         <ToggleInput label="Fire Station" path="general.fire" value={data.general.fire} onChange={v => updateDeep('general.fire', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            const renderCrew = () => (
+                <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
+                    <div className="flex justify-between items-center mb-6">
+                        <SectionHeader title="Crew List" icon="users" />
+                        <button onClick={() => {
+                            const name = prompt("Department Name?");
+                            if(name) setData(p => ({...p, crew: [...p.crew, { id: generateId(), department: name, members: [] }] }));
+                        }} className="bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded">+ New Dept</button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {data.crew.map(dept => {
+                            const isDeptHidden = data.hidden[`dept.${dept.id}`];
+                            return (
+                                <div key={dept.id} className={`p-3 rounded border transition-all ${isDeptHidden ? 'bg-gray-900 border-gray-800 opacity-50' : 'bg-gray-800/50 border-gray-700'}`}>
+                                    <div className="flex justify-between items-center mb-2 pb-1 border-b border-gray-600">
+                                        <div className="flex items-center gap-2 flex-grow">
+                                            <button onClick={() => toggleVisibility(`dept.${dept.id}`)} className={isDeptHidden ? "text-blue-400" : "text-gray-600 hover:text-gray-300"}>
+                                                <Icon name={isDeptHidden ? "eye-off" : "eye"} size={12} />
+                                            </button>
+                                            <input 
+                                                value={dept.department} 
+                                                onChange={e => {
+                                                    const v = e.target.value;
+                                                    setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, department: v} : d)}));
+                                                }}
+                                                className="bg-transparent font-bold text-xs uppercase text-blue-400 w-full outline-none"
+                                            />
+                                        </div>
+                                        <button onClick={() => setData(p => ({...p, crew: p.crew.filter(d => d.id !== dept.id)}))} className="text-red-900 hover:text-red-500"><Icon name="trash" size={12} /></button>
+                                    </div>
+                                    <div className="space-y-1">
+                                        {dept.members.map(m => (
+                                            <div key={m.id} className="flex gap-1 text-xs">
+                                                <input className="w-1/3 bg-gray-900 border border-gray-700 rounded px-1" placeholder="Position" value={m.position} onChange={e => {
+                                                    const v = e.target.value;
+                                                    setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, members: d.members.map(x => x.id === m.id ? {...x, position: v}: x)} : d)}));
+                                                }} />
+                                                <input className="w-1/3 bg-gray-900 border border-gray-700 rounded px-1" placeholder="Name" value={m.name} onChange={e => {
+                                                    const v = e.target.value;
+                                                    setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, members: d.members.map(x => x.id === m.id ? {...x, name: v}: x)} : d)}));
+                                                }} />
+                                                <input className="w-1/4 bg-gray-900 border border-gray-700 rounded px-1 text-center" placeholder="Call" value={m.call} onChange={e => {
+                                                    const v = e.target.value;
+                                                    setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, members: d.members.map(x => x.id === m.id ? {...x, call: v}: x)} : d)}));
+                                                }} />
+                                                <button onClick={() => setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, members: d.members.filter(x => x.id !== m.id)} : d)}))} className="text-gray-600 hover:text-red-400">&times;</button>
+                                            </div>
+                                        ))}
+                                        <button onClick={() => setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, members: [...d.members, {id: generateId(), position:"", name:"", call: data.times.crewCall}]} : d)}))} className="w-full text-center text-[10px] text-gray-500 hover:text-gray-300 mt-2 border border-dashed border-gray-700 rounded">+ Add Member</button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+
+            // --- MAIN LAYOUT ---
+
+            return (
+                <div className="flex h-screen w-full bg-[#0f172a] app-ui">
+                    {/* SIDEBAR */}
+                    <aside className="w-16 flex flex-col items-center py-6 bg-[#020617] border-r border-gray-800 z-50">
+                        <div className="mb-8 text-blue-500">
+                            <Icon name="clapperboard" size={28} />
+                        </div>
+                        
+                        <div className="flex flex-col gap-4 w-full px-2">
+                            <button 
+                                onClick={() => setView('library')}
+                                className={`p-3 rounded-xl flex justify-center transition-all ${view === 'library' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-gray-500 hover:bg-gray-800 hover:text-gray-200'}`}
+                                title="Sheet Library"
+                            >
+                                <Icon name="library" size={20} />
+                            </button>
+                            <button 
+                                onClick={() => setView('editor')}
+                                className={`p-3 rounded-xl flex justify-center transition-all ${view === 'editor' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-gray-500 hover:bg-gray-800 hover:text-gray-200'}`}
+                                title="Editor"
+                            >
+                                <Icon name="edit-3" size={20} />
+                            </button>
+                            <button 
+                                onClick={() => setView('preview')}
+                                className={`p-3 rounded-xl flex justify-center transition-all ${view === 'preview' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-gray-500 hover:bg-gray-800 hover:text-gray-200'}`}
+                                title="Preview"
+                            >
+                                <Icon name="eye" size={20} />
+                            </button>
+                        </div>
+
+                        <div className="mt-auto">
+                            <button 
+                                onClick={saveToLibrary}
+                                className="p-3 text-green-500 hover:bg-gray-800 rounded-xl flex justify-center"
+                                title="Quick Save"
+                            >
+                                <Icon name="save" size={20} />
+                            </button>
+                        </div>
+                    </aside>
+
+                    {/* VIEW CONTENT */}
+                    <main className="flex-grow flex flex-col overflow-hidden relative">
+                        
+                        {/* HEADER (Conditional) */}
+                        {view !== 'preview' && (
+                            <header className="h-16 border-b border-gray-800 flex items-center justify-between px-8 bg-[#0f172a]">
+                                <div>
+                                    <h1 className="text-xl font-bold text-white tracking-tight">SimpleSheet</h1>
+                                    <p className="text-xs text-gray-500 font-mono">{data.name}</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <input 
+                                        type="text" 
+                                        value={data.name} 
+                                        onChange={e => setData(p => ({...p, name: e.target.value}))}
+                                        className="bg-gray-800 border border-gray-700 rounded px-3 py-1 text-sm text-gray-200 focus:border-blue-500 outline-none w-64"
+                                        placeholder="Sheet Name..."
+                                    />
+                                    <span className="text-xs text-gray-500 px-2">v3.1</span>
+                                </div>
+                            </header>
+                        )}
+
+                        {/* LIBRARY VIEW */}
+                        {view === 'library' && (
+                            <div className="flex-grow p-8 overflow-y-auto library-view animate-in fade-in slide-in-from-left-4">
+                                <div className="max-w-5xl mx-auto">
+                                    <div className="flex justify-between items-end mb-8 border-b border-gray-800 pb-4">
+                                        <div>
+                                            <h2 className="text-3xl font-bold text-white mb-2">Sheet Library</h2>
+                                            <p className="text-gray-500">Manage your production documents locally.</p>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <label className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 text-sm font-medium transition-colors">
+                                                <Icon name="upload" size={16} /> Import JSON
+                                                <input type="file" accept=".json" className="hidden" onChange={importJSON} />
+                                            </label>
+                                            <button onClick={createNewSheet} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-lg shadow-blue-900/20 transition-all transform hover:scale-105">
+                                                <Icon name="plus" size={18} /> New Sheet
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {library.map(sheet => (
+                                            <div key={sheet.id} className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-blue-500/50 transition-all group relative overflow-hidden">
+                                                <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                                                    <button onClick={(e) => { e.stopPropagation(); deleteSheet(sheet.id); }} className="p-2 bg-red-900/80 text-white rounded hover:bg-red-700"><Icon name="trash" size={14} /></button>
+                                                </div>
+                                                <div onClick={() => loadSheet(sheet)} className="cursor-pointer">
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-800 to-gray-700 flex items-center justify-center text-blue-400 font-bold border border-gray-700">
+                                                            CS
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="font-bold text-white leading-tight">{sheet.name}</h3>
+                                                            <p className="text-xs text-gray-500 font-mono">{sheet.production.title}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex justify-between items-center mt-4 text-xs text-gray-500 border-t border-gray-800 pt-3">
+                                                        <span>{new Date(sheet.general.date).toLocaleDateString()}</span>
+                                                        <span>Day {sheet.general.dayCurrent}/{sheet.general.dayTotal}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {library.length === 0 && (
+                                            <div className="col-span-full py-20 text-center text-gray-600 border-2 border-dashed border-gray-800 rounded-xl">
+                                                <Icon name="ghost" size={48} className="mx-auto mb-4 opacity-50" />
+                                                <p>Library is empty. Create or Import a sheet.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* EDITOR VIEW */}
+                        {view === 'editor' && (
+                            <div className="flex-grow overflow-hidden flex flex-col editor-view">
+                                {/* TABS */}
+                                <div className="flex overflow-x-auto gap-1 px-4 pt-2 border-b border-gray-800 bg-[#0f172a] shrink-0 tabs">
+                                    {[
+                                        { id: 'general', label: 'General Info', icon: 'settings' },
+                                        { id: 'locations', label: 'Locations', icon: 'map-pin' },
+                                        { id: 'schedule', label: 'Schedule', icon: 'clock' },
+                                        { id: 'scenes', label: 'Shot List', icon: 'camera' },
+                                        { id: 'cast', label: 'Cast', icon: 'user' },
+                                        { id: 'crew', label: 'Crew', icon: 'users' },
+                                        { id: 'notes', label: 'Notes', icon: 'clipboard' },
+                                    ].map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => setActiveTab(tab.id)}
+                                            className={`flex items-center gap-2 px-4 py-3 rounded-t-lg text-xs font-bold uppercase tracking-wide transition-all border-t border-x border-transparent ${activeTab === tab.id ? 'bg-[#1e293b] text-blue-400 border-gray-800' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'}`}
+                                        >
+                                            <Icon name={tab.icon} size={14} /> {tab.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* SCROLLABLE CONTENT */}
+                                <div className="flex-grow overflow-y-auto bg-[#1e293b] p-6">
+                                    <div className="max-w-4xl mx-auto">
+                                        {activeTab === 'general' && renderGeneral()}
+                                        {activeTab === 'locations' && renderDynamicList('locations', [
+                                            { key: 'type', label: 'Type', width: 'col-span-2' },
+                                            { key: 'name', label: 'Name', width: 'col-span-3' },
+                                            { key: 'address', label: 'Address', width: 'col-span-4' },
+                                            { key: 'note', label: 'Note', width: 'col-span-3' },
+                                        ], 'Locations')}
+                                        {activeTab === 'schedule' && renderDynamicList('schedule', [
+                                            { key: 'time', label: 'Time', type: 'time', width: 'col-span-2' },
+                                            { key: 'desc', label: 'Event Description', width: 'col-span-10' },
+                                        ], 'Daily Schedule')}
+                                        {activeTab === 'scenes' && renderDynamicList('scenes', [
+                                            { key: 'number', label: '#', width: 'col-span-1' },
+                                            { key: 'intExt', label: 'I/E', width: 'col-span-1' },
+                                            { key: 'set', label: 'Set', width: 'col-span-2' },
+                                            { key: 'dayNight', label: 'D/N', width: 'col-span-1' },
+                                            { key: 'pages', label: 'Pgs', width: 'col-span-1' },
+                                            { key: 'cast', label: 'Cast IDs', width: 'col-span-1' },
+                                            { key: 'desc', label: 'Description', width: 'col-span-5' },
+                                        ], 'Shot List')}
+                                        {activeTab === 'cast' && renderDynamicList('cast', [
+                                            { key: 'idNum', label: '#', width: 'col-span-1' },
+                                            { key: 'name', label: 'Name', width: 'col-span-3' },
+                                            { key: 'character', label: 'Character', width: 'col-span-2' },
+                                            { key: 'status', label: 'Stat', width: 'col-span-1' },
+                                            { key: 'pickup', label: 'PU', type: 'time', width: 'col-span-1' },
+                                            { key: 'call', label: 'Call', type: 'time', width: 'col-span-1' },
+                                            { key: 'hmw', label: 'H/M/W', type: 'time', width: 'col-span-1' },
+                                            { key: 'set', label: 'Set', type: 'time', width: 'col-span-2' },
+                                        ], 'Cast List')}
+                                        {activeTab === 'crew' && renderCrew()}
+                                        {activeTab === 'notes' && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
+                                                <div className="space-y-4">
+                                                    <SectionHeader title="General Notes" icon="align-left" />
+                                                    <ToggleTextArea label="Production Notes" path="notes.general" value={data.notes.general} onChange={v => updateDeep('notes.general', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={6} />
+                                                    <ToggleTextArea label="Safety Notes" path="general.safetyNotes" value={data.general.safetyNotes} onChange={v => updateDeep('general.safetyNotes', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={3} />
+                                                </div>
+                                                <div className="space-y-4">
+                                                    <SectionHeader title="Department Notes" icon="layers" />
+                                                    <ToggleTextArea label="Dept Specifics" path="notes.department" value={data.notes.department} onChange={v => updateDeep('notes.department', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={6} />
+                                                    
+                                                    {/* Walkies */}
+                                                    <div>
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <label className="text-[10px] font-bold text-gray-500 uppercase">Walkie Channels</label>
+                                                            <button 
+                                                                onClick={() => toggleVisibility('notes.walkies')} 
+                                                                className={data.hidden['notes.walkies'] ? "text-gray-600" : "text-blue-400"}
+                                                            >
+                                                                <Icon name={data.hidden['notes.walkies'] ? "eye-off" : "eye"} size={12} />
+                                                            </button>
+                                                        </div>
+                                                        <div className={`space-y-2 transition-opacity ${data.hidden['notes.walkies'] ? 'opacity-50' : ''}`}>
+                                                            {data.notes.walkies.map((w, i) => (
+                                                                <div key={i} className="flex gap-0">
+                                                                    <div className="bg-gray-800 border border-gray-700 text-gray-400 px-3 py-1 text-xs font-mono border-r-0 rounded-l flex items-center min-w-[30px] justify-center">{w.ch}</div>
+                                                                    <input 
+                                                                        className="bg-gray-900 border border-gray-700 text-gray-200 text-xs px-2 py-1 w-full rounded-r outline-none focus:border-blue-500" 
+                                                                        value={w.use}
+                                                                        onChange={e => {
+                                                                            const nw = [...data.notes.walkies];
+                                                                            nw[i].use = e.target.value;
+                                                                            setData(p => ({...p, notes: {...p.notes, walkies: nw}}));
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="mt-8 pt-8 border-t border-gray-700 flex justify-between items-center text-gray-400 text-xs">
+                                            <div className="flex gap-4 items-center">
+                                                <span>Watermark:</span>
+                                                <select 
+                                                    value={data.meta.watermark} 
+                                                    onChange={e => updateDeep('meta.watermark', e.target.value)}
+                                                    className="bg-gray-800 border-none rounded text-xs px-2 py-1 text-gray-200"
+                                                >
+                                                    <option value="NONE">None</option>
+                                                    <option value="DRAFT">Draft</option>
+                                                    <option value="PRELIM">Preliminary</option>
+                                                    <option value="FINAL">Final</option>
+                                                </select>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={exportJSON} className="hover:text-blue-400 flex items-center gap-1"><Icon name="download" size={14} /> Export JSON</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* PREVIEW VIEW */}
+                        <div className={`${view === 'preview' ? 'flex' : 'hidden'} flex-col items-center justify-start bg-[#525659] h-full overflow-auto relative py-12 preview-view`}>
+                            
+                            {/* FLOATING CONTROLS */}
+                            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 border border-gray-700 floating-controls">
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => setScale(Math.max(0.4, scale - 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="minus" size={16} /></button>
+                                    <span className="text-xs font-mono w-12 text-center">{Math.round(scale * 100)}%</span>
+                                    <button onClick={() => setScale(Math.min(1.5, scale + 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="plus" size={16} /></button>
+                                </div>
+                                <div className="h-4 w-[1px] bg-gray-700"></div>
+                                <button onClick={() => window.print()} className="flex items-center gap-2 font-bold text-sm text-green-400 hover:text-green-300">
+                                    <Icon name="printer" size={18} /> PRINT PDF
+                                </button>
+                            </div>
+
+                            {/* --- THE SHEET --- */}
+                            <div 
+                                className="print-sheet bg-white text-black shadow-2xl origin-top preview-wrapper relative overflow-hidden" 
+                                style={{ width: '210mm', minHeight: '297mm', transform: view === 'preview' ? `scale(${scale})` : 'none' }}
+                            >
+                                {/* WATERMARK */}
+                                {data.meta.watermark !== 'NONE' && (
+                                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-0 opacity-[0.08] overflow-hidden">
+                                        <h1 className="text-[150px] font-black -rotate-45 whitespace-nowrap border-4 border-black px-12 rounded-xl">{data.meta.watermark}</h1>
+                                    </div>
+                                )}
+
+                                {/* CONTENT */}
+                                <div className="relative z-10 p-[10mm] h-full flex flex-col font-sans text-[9px] leading-tight">
+                                    
+                                    {/* HEADER */}
+                                    <div className="flex border-b-2 border-black pb-2 mb-2">
+                                        <div className="w-1/3 pr-4 border-r border-black flex flex-col justify-between">
+                                            {!data.hidden['production.company'] && <div className="font-header font-bold text-xl uppercase tracking-tighter leading-none mb-2">{data.production.company}</div>}
+                                            <div className="space-y-0.5 mt-auto">
+                                                {!data.hidden['production.producers'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">PROD</span> <span className="font-bold">{data.production.producers}</span></div>}
+                                                {!data.hidden['production.director'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">DIR</span> <span className="font-bold">{data.production.director}</span></div>}
+                                                {!data.hidden['production.ad'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">AD</span> <span className="font-bold">{data.production.ad}</span></div>}
+                                                {!data.hidden['general.scriptVer'] && <div className="flex justify-between border-b border-gray-300 text-red-700"><span className="text-gray-500">SCRIPT</span> <span className="font-bold">{data.general.scriptVer}</span></div>}
+                                            </div>
+                                        </div>
+                                        <div className="w-1/3 text-center px-2 flex flex-col items-center justify-center">
+                                            {!data.hidden['production.title'] && <h1 className="font-header text-3xl font-black uppercase tracking-widest">{data.production.title}</h1>}
+                                            {!data.hidden['times.crewCall'] && (
+                                                <div className="mt-2 border-2 border-black bg-black text-white px-4 py-1 text-lg font-bold">
+                                                    CALL: {data.times.crewCall}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="w-1/3 pl-4 border-l border-black text-right flex flex-col justify-between">
+                                            {!data.hidden['general.date'] && <div className="font-header text-2xl font-bold uppercase">{new Date(data.general.date).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}).toUpperCase()}</div>}
+                                            {!data.hidden['general.dayCurrent'] && <div className="bg-gray-200 inline-block px-2 py-0.5 font-bold self-end border border-black">DAY {data.general.dayCurrent} OF {data.general.dayTotal}</div>}
+                                            <div className="text-[8px] mt-1 space-y-0.5">
+                                                {!data.hidden['general.weather'] && <div>{data.general.weather}</div>}
+                                                {(!data.hidden['general.sunrise'] || !data.hidden['general.sunset']) && <div>SR: {data.general.sunrise} | SS: {data.general.sunset}</div>}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* TOP ROW */}
+                                    <div className="grid grid-cols-12 gap-0 border-2 border-black mb-2">
+                                        {/* LOCATIONS */}
+                                        <div className="col-span-5 border-r border-black p-0">
+                                            <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Locations</div>
+                                            <div className="p-1 space-y-2">
+                                                {data.locations.map(loc => {
+                                                    if (data.hidden[`locations.${loc.id}`]) return null;
+                                                    return (
+                                                        <div key={loc.id}>
+                                                            <div className="font-bold uppercase text-[9px] underline decoration-gray-400">{loc.type}: {loc.name}</div>
+                                                            <div className="pl-2">{loc.address}</div>
+                                                            {loc.note && <div className="pl-2 italic text-gray-500">"{loc.note}"</div>}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {!data.hidden['general.nearestHospital'] && (
+                                                    <div className="border-t border-dotted border-gray-400 pt-1 mt-1">
+                                                        <span className="font-bold text-red-600">HOSPITAL:</span> {data.general.nearestHospital}
+                                                        {(!data.hidden['general.police'] || !data.hidden['general.fire']) && <div className="grid grid-cols-2 gap-1 mt-1 text-gray-600">
+                                                             {!data.hidden['general.police'] && <div>POL: {data.general.police}</div>}
+                                                             {!data.hidden['general.fire'] && <div>FIRE: {data.general.fire}</div>}
+                                                        </div>}
+                                                    </div>
+                                                )}
+                                                {/* Advanced Location Fields */}
+                                                {(!data.hidden['general.parking'] || !data.hidden['general.wifi']) && (
+                                                    <div className="border-t border-dotted border-gray-400 pt-1 mt-1 space-y-1">
+                                                        {!data.hidden['general.parking'] && <div><span className="font-bold">PARKING:</span> {data.general.parking}</div>}
+                                                        {!data.hidden['general.wifi'] && <div><span className="font-bold">WIFI:</span> {data.general.wifi}</div>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* SCHEDULE */}
+                                        <div className="col-span-7">
+                                            <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Schedule</div>
+                                            <div className="grid grid-cols-12 text-[9px]">
+                                                 {/* Breakfast (Advanced) */}
+                                                 {!data.hidden['times.breakfast'] && (
+                                                    <>
+                                                        <div className="col-span-2 font-bold text-right pr-2 py-0.5 border-b border-gray-200">{data.times.breakfast}</div>
+                                                        <div className="col-span-10 py-0.5 border-b border-gray-200 font-bold bg-gray-50">BREAKFAST SERVED</div>
+                                                    </>
+                                                )}
+
+                                                {/* Header Times */}
+                                                {!data.hidden['times.crewCall'] && (
+                                                    <>
+                                                        <div className="col-span-2 font-bold text-right pr-2 py-0.5 border-b border-gray-200">{data.times.crewCall}</div>
+                                                        <div className="col-span-10 py-0.5 border-b border-gray-200 font-bold bg-gray-100">GENERAL CREW CALL</div>
+                                                    </>
+                                                )}
+                                                {!data.hidden['times.shootingCall'] && (
+                                                    <>
+                                                        <div className="col-span-2 font-bold text-right pr-2 py-0.5 border-b border-gray-200">{data.times.shootingCall}</div>
+                                                        <div className="col-span-10 py-0.5 border-b border-gray-200 font-bold">SHOOTING CALL</div>
+                                                    </>
+                                                )}
+
+                                                {/* Dynamic Schedule */}
+                                                {data.schedule.map(s => {
+                                                    if(data.hidden[`schedule.${s.id}`]) return null;
+                                                    return (
+                                                        <React.Fragment key={s.id}>
+                                                            <div className="col-span-2 font-bold text-right pr-2 py-0.5 border-b border-gray-200">{s.time}</div>
+                                                            <div className="col-span-10 py-0.5 border-b border-gray-200 uppercase">{s.desc}</div>
+                                                        </React.Fragment>
+                                                    );
+                                                })}
+
+                                                {/* Footer Times */}
+                                                {!data.hidden['times.lunch'] && (
+                                                    <>
+                                                        <div className="col-span-2 font-bold text-right pr-2 py-0.5 border-b border-gray-200">{data.times.lunch}</div>
+                                                        <div className="col-span-10 py-0.5 border-b border-gray-200 font-bold bg-gray-100">LUNCH</div>
+                                                    </>
+                                                )}
+                                                {!data.hidden['times.wrap'] && (
+                                                    <>
+                                                        <div className="col-span-2 font-bold text-right pr-2 py-0.5">{data.times.wrap}</div>
+                                                        <div className="col-span-10 py-0.5 font-bold">ESTIMATED WRAP</div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* SHOT LIST */}
+                                    <div className="border-2 border-black mb-2">
+                                        <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Shot List</div>
+                                        <table className="w-full text-left border-collapse">
+                                            <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b border-black">
+                                                <tr>
+                                                    <th className="px-1 py-0.5 border-r border-black w-8 text-center">#</th>
+                                                    <th className="px-1 py-0.5 border-r border-black w-8 text-center">I/E</th>
+                                                    <th className="px-1 py-0.5 border-r border-black">Set & Description</th>
+                                                    <th className="px-1 py-0.5 border-r border-black w-8 text-center">D/N</th>
+                                                    <th className="px-1 py-0.5 border-r border-black w-10 text-center">Pgs</th>
+                                                    <th className="px-1 py-0.5 w-12 text-center">Cast</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-black">
+                                                {data.scenes.map((s, i) => {
+                                                    if(data.hidden[`scenes.${s.id}`]) return null;
+                                                    return (
+                                                        <tr key={s.id} className={i % 2 === 0 ? "bg-white" : "bg-gray-100"}>
+                                                            <td className="px-1 py-0.5 border-r border-black text-center font-bold">{s.number}</td>
+                                                            <td className="px-1 py-0.5 border-r border-black text-center">{s.intExt}</td>
+                                                            <td className="px-1 py-0.5 border-r border-black">
+                                                                <span className="font-bold uppercase block">{s.set}</span>
+                                                                <span className="italic text-[8px] text-gray-600 block leading-tight">{s.desc}</span>
+                                                            </td>
+                                                            <td className="px-1 py-0.5 border-r border-black text-center">{s.dayNight}</td>
+                                                            <td className="px-1 py-0.5 border-r border-black text-center">{s.pages}</td>
+                                                            <td className="px-1 py-0.5 text-center font-bold">{s.cast}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                <tr className="bg-black text-white font-bold">
+                                                    <td colSpan="4" className="text-right px-2 py-0.5">TOTAL PAGES</td>
+                                                    <td className="text-center py-0.5 bg-gray-800">{sumPages(data.scenes, new Set(Object.keys(data.hidden).filter(k => k.startsWith('scenes.') && data.hidden[k]).map(k => k.split('.')[1])))}</td>
+                                                    <td></td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* CAST */}
+                                    <div className="border-2 border-black mb-2">
+                                        <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Cast</div>
+                                        <table className="w-full text-center border-collapse">
+                                            <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b border-black">
+                                                <tr>
+                                                    <th className="border-r border-gray-400 w-6">#</th>
+                                                    <th className="border-r border-gray-400 text-left px-1">Character</th>
+                                                    <th className="border-r border-gray-400 text-left px-1">Talent</th>
+                                                    <th className="border-r border-gray-400 w-8">Stat</th>
+                                                    <th className="border-r border-gray-400 w-12">Pickup</th>
+                                                    <th className="border-r border-gray-400 w-12">Call</th>
+                                                    <th className="border-r border-gray-400 w-12">H/M/W</th>
+                                                    <th className="w-16">Set Call</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-300">
+                                                {data.cast.map(c => {
+                                                    if(data.hidden[`cast.${c.id}`]) return null;
+                                                    return (
+                                                        <tr key={c.id}>
+                                                            <td className="border-r border-gray-300 font-bold">{c.idNum}</td>
+                                                            <td className="border-r border-gray-300 text-left px-1 font-bold uppercase">{c.character}</td>
+                                                            <td className="border-r border-gray-300 text-left px-1">{c.name}</td>
+                                                            <td className="border-r border-gray-300 font-mono">{c.status}</td>
+                                                            <td className="border-r border-gray-300">{c.pickup}</td>
+                                                            <td className="border-r border-gray-300">{c.call}</td>
+                                                            <td className="border-r border-gray-300">{c.hmw}</td>
+                                                            <td className="font-bold bg-gray-100 border-l border-black">{c.set}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* CREW */}
+                                    <div className="flex-grow">
+                                        <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase mb-1">Crew</div>
+                                        <div className="columns-3 gap-2 text-[8px] items-start">
+                                            {data.crew.map(dept => {
+                                                if(data.hidden[`dept.${dept.id}`]) return null;
+                                                return (
+                                                    <div key={dept.id} className="mb-2 break-inside-avoid">
+                                                        <div className="font-bold border-b border-black mb-0.5 uppercase">{dept.department}</div>
+                                                        {dept.members.map(m => (
+                                                            <div key={m.id} className="flex justify-between items-baseline leading-snug">
+                                                                <div className="truncate pr-1"><span className="font-semibold">{m.position}</span> {m.name}</div>
+                                                                <div className="font-mono text-gray-600">{m.call}</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* FOOTER - NOTES */}
+                                    <div className="mt-auto border-t-2 border-black pt-1">
+                                        <div className="grid grid-cols-2 gap-2 text-[9px] mb-2">
+                                            <div className="border border-black p-1">
+                                                <div className="font-bold underline">NOTES:</div>
+                                                {!data.hidden['notes.general'] && <div className="whitespace-pre-wrap leading-tight">{data.notes.general}</div>}
+                                                {!data.hidden['general.safetyNotes'] && <div className="mt-1 font-bold text-red-600">{data.general.safetyNotes}</div>}
+                                            </div>
+                                            <div className="border border-black p-1">
+                                                <div className="font-bold underline">DEPT NOTES:</div>
+                                                {!data.hidden['notes.department'] && <div className="whitespace-pre-wrap leading-tight">{data.notes.department}</div>}
+                                            </div>
+                                        </div>
+                                        <div className="bg-black text-white p-1 text-[8px] flex justify-between items-center">
+                                            <div className="flex gap-2 font-mono">
+                                                {!data.hidden['notes.walkies'] && (
+                                                    <>
+                                                        <span className="font-bold">WALKIES:</span>
+                                                        {data.notes.walkies.map(w => <span key={w.ch} className="bg-gray-800 px-1">{w.ch}:{w.use}</span>)}
+                                                    </>
+                                                )}
+                                            </div>
+                                            <div>
+                                                {!data.hidden['production.officeEmail'] && data.production.officeEmail} 
+                                                {!data.hidden['production.officeEmail'] && !data.hidden['production.officePhone'] && ' | '} 
+                                                {!data.hidden['production.officePhone'] && data.production.officePhone}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
