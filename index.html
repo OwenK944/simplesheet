@@ -61,7 +61,7 @@
             body, html {
                 background-color: white !important;
                 width: 100% !important;
-                height: auto !important;
+                height: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
                 overflow: visible !important;
@@ -79,7 +79,6 @@
             }
 
             /* UNLOCK LAYOUT CONTAINERS */
-            /* We need to break the flex/grid locks so the page flows naturally */
             #root, 
             .app-ui, 
             .app-ui > main, 
@@ -87,7 +86,7 @@
                 display: block !important;
                 position: static !important;
                 width: 100% !important;
-                height: auto !important;
+                height: 100% !important;
                 overflow: visible !important;
                 background: white !important;
                 margin: 0 !important;
@@ -96,24 +95,34 @@
 
             /* CONFIGURE THE SHEET */
             .print-sheet {
-                display: block !important;
+                display: flex !important;
+                flex-direction: column !important;
                 position: relative !important;
-                margin: 0 auto !important; /* Center it */
+                margin: 0 auto !important;
                 left: auto !important;
                 top: auto !important;
-                transform: none !important; /* CRITICAL: Disables the screen zoom */
-                width: 210mm !important;    /* Force strict A4 width */
-                min-height: 297mm !important;
+                transform: none !important;
+                width: 210mm !important;
+                height: 297mm !important;     /* Force full A4 height */
                 box-shadow: none !important;
                 border: none !important;
-                padding: 0 !important; /* Padding is handled by inner container */
+                padding: 0 !important;
             }
 
             /* COLOR & CONTRAST SAFETY */
             * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
+                color: black !important;
+                border-color: #000 !important;
             }
+            
+            .text-white { color: white !important; }
+            .bg-black { background-color: black !important; color: white !important; }
+            .bg-gray-800 { background-color: #333 !important; color: white !important; }
+            .bg-gray-200 { background-color: #e5e5e5 !important; }
+            .bg-gray-300 { background-color: #d4d4d4 !important; }
+            .bg-gray-100 { background-color: #f3f4f6 !important; }
             
             /* Hide toggle buttons in print */
             button {
@@ -139,29 +148,26 @@
         // --- UTILS ---
         const generateId = () => Math.random().toString(36).substr(2, 9);
         
-        const sumPages = (scenes, hiddenSet) => {
-            let eighths = 0;
-            scenes.forEach(s => {
-                if(!s.pages || hiddenSet.has(s.id)) return;
-                const parts = s.pages.toString().split('/');
-                if(parts.length === 2) eighths += parseInt(parts[0]);
-                else eighths += parseFloat(s.pages) * 8;
-            });
-            const whole = Math.floor(eighths / 8);
-            const rem = eighths % 8;
-            return rem === 0 ? `${whole}` : whole === 0 ? `${rem}/8` : `${whole} ${rem}/8`;
-        };
-
         const wmoCodeToText = (code) => {
             const codes = {
-                0: "Clear Sky", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
-                45: "Fog", 48: "Depositing Rime Fog",
-                51: "Light Drizzle", 53: "Mod. Drizzle", 55: "Dense Drizzle",
-                61: "Slight Rain", 63: "Mod. Rain", 65: "Heavy Rain",
-                71: "Slight Snow", 73: "Mod. Snow", 75: "Heavy Snow",
-                95: "Thunderstorm", 96: "Thunderstorm/Hail"
+                0: "Clear", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
+                45: "Fog", 48: "Rime Fog",
+                51: "Light Drizzle", 53: "Drizzle", 55: "Dense Drizzle",
+                61: "Slight Rain", 63: "Rain", 65: "Heavy Rain",
+                71: "Snow", 73: "Mod. Snow", 75: "Heavy Snow",
+                95: "Thunderstorm"
             };
             return codes[code] || "Variable";
+        };
+
+        const formatTime = (timeStr, useMilitary) => {
+            if (!timeStr) return "";
+            if (useMilitary) return timeStr; // Input is usually HH:MM 24h
+            const [hour, min] = timeStr.split(':');
+            const h = parseInt(hour, 10);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const h12 = h % 12 || 12;
+            return `${h12}:${min}${ampm}`;
         };
 
         // --- INITIAL DATA ---
@@ -169,14 +175,19 @@
             id: generateId(),
             name: "New Call Sheet",
             lastModified: Date.now(),
+            settings: {
+                militaryTime: false, // Default to standard time visually
+            },
             hidden: {
-                'general.scriptVer': true,
-                'general.parking': true,
+                // Defaults disabled as per request
                 'general.wifi': true,
                 'times.breakfast': true,
-                'general.police': true,
-                'general.fire': true,
-                'notes.walkies': false
+                'times.supper': true,
+                'notes.props': true,
+                'notes.sfx': true,
+                'notes.vehicles': true,
+                'notes.wardrobe': true,
+                'notes.art': true,
             }, 
             meta: { watermark: "DRAFT" },
             production: { 
@@ -208,39 +219,45 @@
                 breakfast: "06:30",
                 crewCall: "07:00", 
                 shootingCall: "08:00", 
-                lunch: "13:00", 
+                lunch: "13:00",
+                supper: "19:00",
                 wrap: "19:00" 
             },
             locations: [
-                { id: 1, type: "BASECAMP", name: "Parking Lot C", address: "100 Studio Dr, Los Angeles, CA", note: "Crew park here", isMain: false },
-                { id: 2, type: "LOCATION", name: "The Warehouse", address: "500 Industrial Way, Los Angeles, CA", note: "Shuttle from Base", isMain: true }
+                { id: generateId(), type: "BASECAMP", name: "Parking Lot C", address: "100 Studio Dr, Los Angeles, CA", note: "Crew park here", isMain: false },
+                { id: generateId(), type: "LOCATION", name: "The Warehouse", address: "500 Industrial Way, Los Angeles, CA", note: "Shuttle from Base", isMain: true }
             ],
-            schedule: [
-                { id: 1, time: "07:00", desc: "CREW CALL / BREAKFAST" },
-                { id: 2, time: "08:00", desc: "SHOOTING CALL - Sc 24" },
-                { id: 3, time: "13:00", desc: "LUNCH (30 Minutes)" },
-                { id: 4, time: "19:00", desc: "ESTIMATED WRAP" }
-            ],
-            scenes: [
-                { id: 1, number: "24", intExt: "INT", set: "WAREHOUSE", dayNight: "DAY", cast: "1, 2", pages: "4/8", location: "Warehouse", desc: "The deal goes bad." },
-                { id: 2, number: "25", intExt: "EXT", set: "ALLEYWAY", dayNight: "NIGHT", cast: "1", pages: "2/8", location: "Warehouse", desc: "Running away." }
+            // Combined Schedule and Shot List
+            timeline: [
+                { id: generateId(), type: 'event', time: "07:00", desc: "CREW CALL / BREAKFAST" },
+                { id: generateId(), type: 'event', time: "08:00", desc: "SHOOTING CALL" },
+                { id: generateId(), type: 'scene', number: "24", intExt: "INT", set: "WAREHOUSE", dayNight: "DAY", pages: "4/8", cast: "1, 2", desc: "The deal goes bad." },
+                { id: generateId(), type: 'event', time: "13:00", desc: "LUNCH (30 Minutes)" },
+                { id: generateId(), type: 'scene', number: "25", intExt: "EXT", set: "ALLEYWAY", dayNight: "NIGHT", pages: "2/8", cast: "1", desc: "Running away." },
+                { id: generateId(), type: 'event', time: "19:00", desc: "ESTIMATED WRAP" }
             ],
             cast: [
-                { id: 1, name: "Liam Lead", character: "JACK", idNum: "1", status: "W", pickup: "06:30", call: "07:00", hmw: "07:15", set: "08:00", notes: "" },
-                { id: 2, name: "Sarah Star", character: "JILL", idNum: "2", status: "SW", pickup: "08:00", call: "08:30", hmw: "08:45", set: "09:30", notes: "" }
+                { id: generateId(), name: "Liam Lead", character: "JACK", idNum: "1", status: "W", pickup: "06:30", call: "07:00", hmw: "07:15", set: "08:00", notes: "" },
+                { id: generateId(), name: "Sarah Star", character: "JILL", idNum: "2", status: "SW", pickup: "08:00", call: "08:30", hmw: "08:45", set: "09:30", notes: "" }
             ],
+            // Flat Crew List
             crew: [
-                { id: "dept1", department: "CAMERA", members: [{ id: "c1", position: "DP", name: "Chivo", call: "07:00" }] },
-                { id: "dept2", department: "SOUND", members: [{ id: "s1", position: "Mixer", name: "Sound Guy", call: "07:00" }] }
+                { id: generateId(), dept: "CAMERA", position: "DP", name: "Chivo", call: "07:00" },
+                { id: generateId(), dept: "SOUND", position: "Mixer", name: "Sound Guy", call: "07:00" }
             ],
             notes: {
                 general: "Let's make a movie! Please verify your timecards.",
                 department: "Camera: New LUTs loaded. \nArt: Please reset Sc 24 after take 1.",
+                props: "Guns (Rubber)",
+                sfx: "Atmosphere smoke",
+                vehicles: "Hero Car",
+                wardrobe: "Jack Look 1",
+                art: "Breakaway table",
                 walkies: [{ ch: 1, use: "MAIN" }, { ch: 2, use: "OPEN" }, { ch: 3, use: "CAM" }]
             }
         };
 
-        // --- REUSABLE UI COMPONENTS ---
+        // --- COMPONENTS ---
 
         const ToggleInput = ({ label, value, onChange, path, hiddenMap, onToggle, type = "text", className = "", placeholder="" }) => {
             const isHidden = hiddenMap[path];
@@ -252,6 +269,7 @@
                             onClick={() => onToggle(path)} 
                             title={isHidden ? "Show in Preview" : "Hide in Preview"}
                             className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`}
+                            tabIndex="-1"
                         >
                             <Icon name={isHidden ? "eye-off" : "eye"} size={12} />
                         </button>
@@ -276,6 +294,7 @@
                         <button 
                             onClick={() => onToggle(path)} 
                             className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`}
+                            tabIndex="-1"
                         >
                             <Icon name={isHidden ? "eye-off" : "eye"} size={12} />
                         </button>
@@ -318,68 +337,7 @@
                 localStorage.setItem('simpleSheet_library', JSON.stringify(library));
             }, [library]);
 
-            // --- ACTIONS ---
-            const saveToLibrary = () => {
-                const now = Date.now();
-                const newData = { ...data, lastModified: now };
-                setData(newData);
-                
-                setLibrary(prev => {
-                    const existingIdx = prev.findIndex(item => item.id === newData.id);
-                    if (existingIdx >= 0) {
-                        const newLib = [...prev];
-                        newLib[existingIdx] = newData;
-                        return newLib;
-                    }
-                    return [newData, ...prev];
-                });
-                alert("Sheet saved to Library!");
-            };
-
-            const loadSheet = (sheet) => {
-                setData(sheet);
-                setView('editor');
-            };
-
-            const deleteSheet = (id) => {
-                if(confirm("Are you sure? This cannot be undone.")) {
-                    setLibrary(prev => prev.filter(item => item.id !== id));
-                    if (data.id === id) setData(initialData);
-                }
-            };
-
-            const createNewSheet = () => {
-                setData({ ...initialData, id: generateId(), name: "New Call Sheet", lastModified: Date.now() });
-                setView('editor');
-            };
-
-            const exportJSON = () => {
-                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
-                const downloadAnchorNode = document.createElement('a');
-                downloadAnchorNode.setAttribute("href", dataStr);
-                downloadAnchorNode.setAttribute("download", `${data.name.replace(/\s+/g, '_')}_CallSheet.json`);
-                document.body.appendChild(downloadAnchorNode);
-                downloadAnchorNode.click();
-                downloadAnchorNode.remove();
-            };
-
-            const importJSON = (event) => {
-                const fileReader = new FileReader();
-                fileReader.readAsText(event.target.files[0], "UTF-8");
-                fileReader.onload = e => {
-                    try {
-                        const parsed = JSON.parse(e.target.result);
-                        if (!parsed.production) throw new Error("Invalid Format");
-                        parsed.id = generateId(); // New ID on import to avoid conflicts
-                        setData(parsed);
-                        saveToLibrary(); // Auto save import
-                        setView('editor');
-                    } catch (err) {
-                        alert("Error importing file: Invalid JSON format.");
-                    }
-                };
-            };
-
+            // --- DATA HELPERS ---
             const updateDeep = (path, value) => {
                 setData(prev => {
                     const newData = { ...prev };
@@ -400,94 +358,127 @@
                 });
             };
 
+            const moveItem = (listKey, index, direction) => {
+                setData(prev => {
+                    const list = [...prev[listKey]];
+                    if (direction === 'up' && index > 0) {
+                        [list[index], list[index - 1]] = [list[index - 1], list[index]];
+                    } else if (direction === 'down' && index < list.length - 1) {
+                        [list[index], list[index + 1]] = [list[index + 1], list[index]];
+                    }
+                    return { ...prev, [listKey]: list };
+                });
+            };
+
+            // --- ACTIONS ---
+            const saveToLibrary = () => {
+                const now = Date.now();
+                const newData = { ...data, lastModified: now };
+                setData(newData);
+                setLibrary(prev => {
+                    const existingIdx = prev.findIndex(item => item.id === newData.id);
+                    if (existingIdx >= 0) {
+                        const newLib = [...prev];
+                        newLib[existingIdx] = newData;
+                        return newLib;
+                    }
+                    return [newData, ...prev];
+                });
+                alert("Sheet saved to Library!");
+            };
+
+            const loadSheet = (sheet) => { setData(sheet); setView('editor'); };
+            const deleteSheet = (id) => {
+                if(confirm("Are you sure?")) {
+                    setLibrary(prev => prev.filter(item => item.id !== id));
+                    if (data.id === id) setData(initialData);
+                }
+            };
+            const createNewSheet = () => { setData({ ...initialData, id: generateId(), name: "New Call Sheet", lastModified: Date.now() }); setView('editor'); };
+            
+            const exportJSON = () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+                const anchor = document.createElement('a');
+                anchor.href = dataStr;
+                anchor.download = `${data.name.replace(/\s+/g, '_')}.json`;
+                anchor.click();
+            };
+
+            const importJSON = (e) => {
+                const fr = new FileReader();
+                fr.readAsText(e.target.files[0]);
+                fr.onload = ev => {
+                    try {
+                        const parsed = JSON.parse(ev.target.result);
+                        parsed.id = generateId(); 
+                        setData(parsed);
+                        saveToLibrary();
+                        setView('editor');
+                    } catch(err) { alert("Invalid JSON"); }
+                };
+            };
+
             const fetchWeather = async () => {
-                if (!data.general.zipCode) return alert("Please enter a Zip Code first.");
+                if (!data.general.zipCode) return alert("Enter Zip Code");
                 setWeatherLoading(true);
                 try {
                     const geoRes = await fetch(`https://api.zippopotam.us/us/${data.general.zipCode}`);
-                    if (!geoRes.ok) throw new Error("Zip code not found");
+                    if (!geoRes.ok) throw new Error("Zip not found");
                     const geoData = await geoRes.json();
                     const { latitude, longitude, "place name": city, state } = geoData.places[0];
-
-                    const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,sunrise,sunset&current_weather=true&temperature_unit=fahrenheit&timezone=auto`);
-                    const weatherData = await weatherRes.json();
+                    const wRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,sunrise,sunset&current_weather=true&temperature_unit=fahrenheit&timezone=auto`);
+                    const wData = await wRes.json();
                     
-                    const today = weatherData.daily;
-                    const current = weatherData.current_weather;
+                    const weatherStr = `${Math.round(wData.current_weather.temperature)}°F - ${wmoCodeToText(wData.current_weather.weathercode)}`;
+                    const sr = new Date(wData.daily.sunrise[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
+                    const ss = new Date(wData.daily.sunset[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
 
-                    const weatherStr = `${Math.round(current.temperature)}°F - ${wmoCodeToText(current.weathercode)}`;
-                    const sr = new Date(today.sunrise[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
-                    const ss = new Date(today.sunset[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
-
-                    setData(prev => ({
-                        ...prev,
-                        general: {
-                            ...prev.general,
-                            weather: weatherStr,
-                            sunrise: sr,
-                            sunset: ss
-                        },
-                        locations: prev.locations.length === 0 ? [{ id: generateId(), type: "SHOOT", name: `${city}, ${state}`, address: "", isMain: true }] : prev.locations
+                    setData(p => ({
+                        ...p,
+                        general: { ...p.general, weather: weatherStr, sunrise: sr, sunset: ss },
+                        locations: p.locations.length === 0 ? [{ id: generateId(), type: "SHOOT", name: `${city}, ${state}`, address: "", isMain: true }] : p.locations
                     }));
-                } catch (e) {
-                    alert("Could not fetch weather: " + e.message);
-                } finally {
-                    setWeatherLoading(false);
-                }
+                } catch (e) { alert("Weather error: " + e.message); } 
+                finally { setWeatherLoading(false); }
             };
 
-            const findHospital = () => {
-                const mainLoc = data.locations.find(l => l.isMain);
-                const query = mainLoc ? mainLoc.address : data.general.zipCode;
-                if (!query) return alert("Please set a Main Location address or Zip code.");
-                window.open(`https://www.google.com/maps/search/nearest+hospital+to+${encodeURIComponent(query)}`, '_blank');
-            };
-
-            // --- RENDERERS ---
+            // --- TABS RENDERERS ---
 
             const renderGeneral = () => (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in duration-300">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in">
+                    {/* Header Info */}
                     <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
-                        <SectionHeader title="Production Info" icon="clapperboard" />
+                        <SectionHeader title="Header Info" icon="clapperboard" />
                         <div className="space-y-4">
                             <ToggleInput label="Project Title" path="production.title" value={data.production.title} onChange={v => updateDeep('production.title', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                            <ToggleInput label="Company" path="production.company" value={data.production.company} onChange={v => updateDeep('production.company', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <ToggleInput label="Company" path="production.company" value={data.production.company} onChange={v => updateDeep('production.company', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="Script Ver" path="general.scriptVer" value={data.general.scriptVer} onChange={v => updateDeep('general.scriptVer', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <ToggleInput label="Director" path="production.director" value={data.production.director} onChange={v => updateDeep('production.director', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                <ToggleInput label="1st AD" path="production.ad" value={data.production.ad} onChange={v => updateDeep('production.ad', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="Producers" path="production.producers" value={data.production.producers} onChange={v => updateDeep('production.producers', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             </div>
-                            <ToggleInput label="Producers" path="production.producers" value={data.production.producers} onChange={v => updateDeep('production.producers', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             <div className="grid grid-cols-2 gap-4">
-                                <ToggleInput label="Office Phone" path="production.officePhone" value={data.production.officePhone} onChange={v => updateDeep('production.officePhone', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                <ToggleInput label="Office Email" path="production.officeEmail" value={data.production.officeEmail} onChange={v => updateDeep('production.officeEmail', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="1st AD" path="production.ad" value={data.production.ad} onChange={v => updateDeep('production.ad', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="Phone" path="production.officePhone" value={data.production.officePhone} onChange={v => updateDeep('production.officePhone', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             </div>
-                            
-                            {/* Advanced Production Fields */}
-                            <div className="pt-4 border-t border-gray-800">
-                                <p className="text-[10px] uppercase font-bold text-gray-600 mb-2">Optional Fields</p>
-                                <ToggleInput label="Script Version" path="general.scriptVer" value={data.general.scriptVer} onChange={v => updateDeep('general.scriptVer', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                            </div>
+                            <ToggleInput label="Email" path="production.officeEmail" value={data.production.officeEmail} onChange={v => updateDeep('production.officeEmail', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                         </div>
                     </div>
 
+                    {/* Date & Weather */}
                     <div className="space-y-8">
                         <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
-                            <SectionHeader title="Logistics & Weather" icon="sun" />
-                            
+                            <SectionHeader title="Date & Weather" icon="sun" />
                             <div className="flex gap-2 items-end mb-4 bg-gray-800/50 p-3 rounded border border-gray-700">
                                 <div className="flex-grow">
                                     <ToggleInput label="Zip Code" path="general.zipCode" value={data.general.zipCode} onChange={v => updateDeep('general.zipCode', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} placeholder="Enter Zip" />
                                 </div>
-                                <button 
-                                    onClick={fetchWeather} 
-                                    disabled={weatherLoading}
-                                    className="mb-0.5 h-[38px] px-4 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
-                                >
-                                    {weatherLoading ? <Icon name="loader-2" className="animate-spin" /> : <Icon name="cloud-lightning" />}
-                                    Auto-Fetch
+                                <button onClick={fetchWeather} disabled={weatherLoading} className="mb-0.5 h-[38px] px-4 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors flex items-center gap-2 disabled:opacity-50">
+                                    {weatherLoading ? <Icon name="loader-2" className="animate-spin" /> : <Icon name="cloud-lightning" />} Fetch
                                 </button>
                             </div>
-
                             <div className="grid grid-cols-2 gap-4 mb-4">
                                 <ToggleInput type="date" label="Date" path="general.date" value={data.general.date} onChange={v => updateDeep('general.date', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                                 <div className="flex gap-2">
@@ -495,394 +486,328 @@
                                     <ToggleInput type="number" label="Total" path="general.dayTotal" value={data.general.dayTotal} onChange={v => updateDeep('general.dayTotal', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} className="w-1/2" />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div className="grid grid-cols-3 gap-2">
+                                <ToggleInput label="Weather" path="general.weather" value={data.general.weather} onChange={v => updateDeep('general.weather', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} className="col-span-1" />
                                 <ToggleInput type="time" label="Sunrise" path="general.sunrise" value={data.general.sunrise} onChange={v => updateDeep('general.sunrise', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                                 <ToggleInput type="time" label="Sunset" path="general.sunset" value={data.general.sunset} onChange={v => updateDeep('general.sunset', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             </div>
-                            <ToggleInput label="Weather Summary" path="general.weather" value={data.general.weather} onChange={v => updateDeep('general.weather', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             
-                            {/* Advanced Logistics */}
-                            <div className="pt-4 border-t border-gray-800 space-y-4">
-                                <p className="text-[10px] uppercase font-bold text-gray-600">Optional Fields</p>
-                                <ToggleInput label="Wifi Info" path="general.wifi" value={data.general.wifi} onChange={v => updateDeep('general.wifi', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                <ToggleInput label="Parking Notes" path="general.parking" value={data.general.parking} onChange={v => updateDeep('general.parking', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            {/* Global Settings */}
+                            <div className="mt-4 pt-4 border-t border-gray-700 flex justify-between items-center">
+                                <span className="text-xs font-bold text-gray-400">PDF Output Time Format</span>
+                                <div className="flex bg-gray-800 rounded p-1">
+                                    <button onClick={() => updateDeep('settings.militaryTime', false)} className={`px-3 py-1 text-xs rounded ${!data.settings.militaryTime ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>12h Standard</button>
+                                    <button onClick={() => updateDeep('settings.militaryTime', true)} className={`px-3 py-1 text-xs rounded ${data.settings.militaryTime ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>24h Military</button>
+                                </div>
                             </div>
                         </div>
 
+                        {/* Key Timings (Header Config) */}
                         <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
-                            <SectionHeader title="Key Timings" icon="clock" />
+                            <SectionHeader title="Key Timings (Header)" icon="clock" />
                             <div className="grid grid-cols-2 gap-4 mb-4">
                                 <ToggleInput type="time" label="Crew Call" path="times.crewCall" value={data.times.crewCall} onChange={v => updateDeep('times.crewCall', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                                 <ToggleInput type="time" label="Shooting Call" path="times.shootingCall" value={data.times.shootingCall} onChange={v => updateDeep('times.shootingCall', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <ToggleInput type="time" label="Lunch" path="times.lunch" value={data.times.lunch} onChange={v => updateDeep('times.lunch', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                <ToggleInput type="time" label="Est Wrap" path="times.wrap" value={data.times.wrap} onChange={v => updateDeep('times.wrap', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                            </div>
-                             {/* Advanced Times */}
-                             <div className="pt-4 mt-4 border-t border-gray-800">
-                                <p className="text-[10px] uppercase font-bold text-gray-600 mb-2">Optional Fields</p>
+                            <div className="grid grid-cols-3 gap-2">
                                 <ToggleInput type="time" label="Breakfast" path="times.breakfast" value={data.times.breakfast} onChange={v => updateDeep('times.breakfast', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput type="time" label="Lunch" path="times.lunch" value={data.times.lunch} onChange={v => updateDeep('times.lunch', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput type="time" label="Supper" path="times.supper" value={data.times.supper} onChange={v => updateDeep('times.supper', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
+                            <div className="mt-4">
+                                <ToggleInput type="time" label="Est Wrap" path="times.wrap" value={data.times.wrap} onChange={v => updateDeep('times.wrap', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             </div>
                         </div>
                     </div>
                 </div>
             );
 
-            const renderDynamicList = (key, columns, title) => {
-                const list = data[key];
-                
-                const addRow = () => {
-                    const newItem = { id: generateId() };
-                    columns.forEach(c => newItem[c.key] = "");
-                    if(key === 'locations' && list.length === 0) newItem.isMain = true;
-                    setData(p => ({...p, [key]: [...p[key], newItem]}));
-                };
-
-                const updateRow = (id, f, val) => {
-                    setData(p => ({
-                        ...p,
-                        [key]: p[key].map(item => {
-                            if (item.id !== id) return item;
-                            return { ...item, [f]: val };
-                        })
-                    }));
-                };
-
-                const setMainLocation = (id) => {
-                    setData(p => ({
-                        ...p,
-                        locations: p.locations.map(l => ({...l, isMain: l.id === id}))
-                    }));
-                };
-
-                const toggleRowVisibility = (id) => toggleVisibility(`${key}.${id}`);
-
-                const deleteRow = (id) => setData(p => ({ ...p, [key]: p[key].filter(i => i.id !== id) }));
-
+            const renderLocations = () => {
+                const addLoc = () => setData(p => ({...p, locations: [...p.locations, { id: generateId(), type: "LOCATION", name: "", address: "", note: "", isMain: false }]}));
                 return (
                     <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl animate-in fade-in">
                         <div className="flex justify-between items-center mb-6">
-                            <SectionHeader title={title} icon="list" />
-                            <button onClick={addRow} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 transition-colors">
-                                <Icon name="plus" size={14} /> ADD ROW
-                            </button>
+                            <SectionHeader title="Locations & Parking" icon="map-pin" />
+                            <button onClick={addLoc} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add</button>
+                        </div>
+                        
+                        {/* Global Parking */}
+                        <div className="mb-6 p-4 bg-blue-900/20 border border-blue-800/50 rounded-lg">
+                            <ToggleTextArea label="Global Parking Notes" path="general.parking" value={data.general.parking} onChange={v => updateDeep('general.parking', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={2} />
                         </div>
 
-                        <div className="space-y-2">
-                            {list.map((item, idx) => {
-                                const isRowHidden = data.hidden[`${key}.${item.id}`];
-                                return (
-                                    <div key={item.id} className={`flex gap-2 items-start p-2 rounded border transition-all ${isRowHidden ? 'bg-gray-900 border-gray-800 opacity-60' : 'bg-gray-800/50 border-gray-700/50 hover:border-blue-500/30'}`}>
-                                        
-                                        {/* Row Controls */}
-                                        <div className="flex flex-col gap-2 pt-2">
-                                            {key === 'locations' && (
-                                                <input 
-                                                    type="radio" 
-                                                    name="mainLoc" 
-                                                    checked={item.isMain} 
-                                                    onChange={() => setMainLocation(item.id)}
-                                                    title="Set as Main Location for Hospital Search"
-                                                    className="accent-blue-500 cursor-pointer"
-                                                />
-                                            )}
-                                            <button onClick={() => toggleRowVisibility(item.id)} className={`transition-colors ${isRowHidden ? 'text-blue-400' : 'text-gray-600 hover:text-blue-400'}`}>
-                                                <Icon name={isRowHidden ? "eye-off" : "eye"} size={14} />
-                                            </button>
-                                        </div>
-
-                                        <div className="flex-grow grid grid-cols-12 gap-2">
-                                            {columns.map(col => (
-                                                <div key={col.key} className={col.width}>
-                                                    <input
-                                                        type={col.type || "text"}
-                                                        placeholder={col.label}
-                                                        value={item[col.key] || ""}
-                                                        onChange={e => updateRow(item.id, col.key, e.target.value)}
-                                                        className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 text-xs py-1 px-1 outline-none text-gray-300 placeholder-gray-600"
-                                                    />
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <button onClick={() => deleteRow(item.id)} className="text-red-900 hover:text-red-500 pt-1 transition-colors">
-                                            <Icon name="x" size={14} />
-                                        </button>
+                        {/* Location List */}
+                        <div className="space-y-3">
+                            {data.locations.map((loc, idx) => (
+                                <div key={loc.id} className="flex gap-2 items-start bg-gray-800/50 p-3 rounded border border-gray-700/50">
+                                    <div className="flex flex-col gap-1 pt-2">
+                                        <button tabIndex="-1" onClick={() => moveItem('locations', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button>
+                                        <button tabIndex="-1" onClick={() => moveItem('locations', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button>
                                     </div>
-                                )
-                            })}
-                            {list.length === 0 && <div className="text-center py-8 text-gray-600 italic text-sm">List is empty. Add a row to start.</div>}
-                        </div>
-
-                        {/* EMERGENCY CARD (Only in Locations Tab) */}
-                        {key === 'locations' && (
-                            <div className="mt-8 bg-red-900/20 border border-red-900/50 rounded-lg p-4">
-                                <SectionHeader title="Emergency Services" icon="siren" />
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="text-[10px] font-bold text-red-400 uppercase">Nearest Hospital</label>
-                                            <button 
-                                                onClick={findHospital}
-                                                className="text-[10px] bg-red-900/60 hover:bg-red-800 px-2 py-0.5 rounded text-white border border-red-700 transition-colors flex items-center gap-1"
-                                            >
-                                                <Icon name="map" size={10} /> Find Near Main Loc
-                                            </button>
-                                        </div>
-                                        <ToggleInput 
-                                            path="general.nearestHospital"
-                                            value={data.general.nearestHospital} 
-                                            onChange={v => updateDeep('general.nearestHospital', v)} 
-                                            hiddenMap={data.hidden} onToggle={toggleVisibility}
-                                        />
+                                    <button 
+                                        tabIndex="-1"
+                                        onClick={() => setData(p => ({...p, locations: p.locations.map(l => ({...l, isMain: l.id === loc.id}))}))} 
+                                        className={`mt-2 ${loc.isMain ? 'text-yellow-400' : 'text-gray-600 hover:text-gray-400'}`}
+                                        title="Set as Main Location"
+                                    >
+                                        <Icon name="star" size={18} fill={loc.isMain ? "currentColor" : "none"} />
+                                    </button>
+                                    <div className="flex-grow grid grid-cols-12 gap-2">
+                                        <div className="col-span-2"><input className="w-full bg-transparent border-b border-gray-600 text-xs py-1 text-gray-300" placeholder="Type" value={loc.type} onChange={e => { const l = [...data.locations]; l[idx].type = e.target.value; setData(p => ({...p, locations: l})); }} /></div>
+                                        <div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-600 text-xs py-1 text-gray-300 font-bold" placeholder="Name" value={loc.name} onChange={e => { const l = [...data.locations]; l[idx].name = e.target.value; setData(p => ({...p, locations: l})); }} /></div>
+                                        <div className="col-span-4"><input className="w-full bg-transparent border-b border-gray-600 text-xs py-1 text-gray-300" placeholder="Address" value={loc.address} onChange={e => { const l = [...data.locations]; l[idx].address = e.target.value; setData(p => ({...p, locations: l})); }} /></div>
+                                        <div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-600 text-xs py-1 text-gray-300 italic" placeholder="Notes" value={loc.note} onChange={e => { const l = [...data.locations]; l[idx].note = e.target.value; setData(p => ({...p, locations: l})); }} /></div>
                                     </div>
-                                    <div className="space-y-4">
-                                         <ToggleInput label="Police Station" path="general.police" value={data.general.police} onChange={v => updateDeep('general.police', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                         <ToggleInput label="Fire Station" path="general.fire" value={data.general.fire} onChange={v => updateDeep('general.fire', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                    <div className="flex flex-col gap-1">
+                                        <button tabIndex="-1" onClick={() => toggleVisibility(`locations.${loc.id}`)} className={data.hidden[`locations.${loc.id}`] ? "text-blue-400" : "text-gray-600"}><Icon name={data.hidden[`locations.${loc.id}`] ? "eye-off" : "eye"} size={14} /></button>
+                                        <button tabIndex="-1" onClick={() => setData(p => ({...p, locations: p.locations.filter(l => l.id !== loc.id)}))} className="text-red-900 hover:text-red-500"><Icon name="x" size={14} /></button>
                                     </div>
                                 </div>
+                            ))}
+                        </div>
+
+                        {/* Emergency Services */}
+                        <div className="mt-8 bg-red-900/10 border border-red-900/30 rounded-lg p-6">
+                            <SectionHeader title="Safety & Emergency" icon="shield-alert" />
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div>
+                                    <div className="flex justify-between items-center mb-1">
+                                        <label className="text-[10px] font-bold text-red-400 uppercase">Nearest Hospital</label>
+                                        <button onClick={() => window.open(`https://www.google.com/maps/search/hospital+near+${data.locations.find(l=>l.isMain)?.address || data.general.zipCode}`, '_blank')} className="text-[10px] bg-red-900/60 px-2 rounded text-white flex items-center gap-1 hover:bg-red-800"><Icon name="map" size={10} /> Find</button>
+                                    </div>
+                                    <ToggleInput path="general.nearestHospital" value={data.general.nearestHospital} onChange={v => updateDeep('general.nearestHospital', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                </div>
+                                <ToggleInput label="Police Station" path="general.police" value={data.general.police} onChange={v => updateDeep('general.police', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="Fire Station" path="general.fire" value={data.general.fire} onChange={v => updateDeep('general.fire', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             </div>
-                        )}
+                        </div>
                     </div>
                 );
             };
 
-            const renderCrew = () => (
-                <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
-                    <div className="flex justify-between items-center mb-6">
-                        <SectionHeader title="Crew List" icon="users" />
-                        <button onClick={() => {
-                            const name = prompt("Department Name?");
-                            if(name) setData(p => ({...p, crew: [...p.crew, { id: generateId(), department: name, members: [] }] }));
-                        }} className="bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded">+ New Dept</button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {data.crew.map(dept => {
-                            const isDeptHidden = data.hidden[`dept.${dept.id}`];
-                            return (
-                                <div key={dept.id} className={`p-3 rounded border transition-all ${isDeptHidden ? 'bg-gray-900 border-gray-800 opacity-50' : 'bg-gray-800/50 border-gray-700'}`}>
-                                    <div className="flex justify-between items-center mb-2 pb-1 border-b border-gray-600">
-                                        <div className="flex items-center gap-2 flex-grow">
-                                            <button onClick={() => toggleVisibility(`dept.${dept.id}`)} className={isDeptHidden ? "text-blue-400" : "text-gray-600 hover:text-gray-300"}>
-                                                <Icon name={isDeptHidden ? "eye-off" : "eye"} size={12} />
-                                            </button>
-                                            <input 
-                                                value={dept.department} 
-                                                onChange={e => {
-                                                    const v = e.target.value;
-                                                    setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, department: v} : d)}));
-                                                }}
-                                                className="bg-transparent font-bold text-xs uppercase text-blue-400 w-full outline-none"
-                                            />
-                                        </div>
-                                        <button onClick={() => setData(p => ({...p, crew: p.crew.filter(d => d.id !== dept.id)}))} className="text-red-900 hover:text-red-500"><Icon name="trash" size={12} /></button>
+            const renderTimeline = () => {
+                const addItem = (type) => {
+                    const item = type === 'event' 
+                        ? { id: generateId(), type: 'event', time: "", desc: "New Event" }
+                        : { id: generateId(), type: 'scene', number: "", intExt: "INT", set: "", dayNight: "DAY", pages: "", cast: "", desc: "" };
+                    setData(p => ({...p, timeline: [...p.timeline, item]}));
+                };
+
+                const insertKeyTimings = () => {
+                    const timings = [
+                        { t: data.times.breakfast, d: "Breakfast" },
+                        { t: data.times.crewCall, d: "General Crew Call" },
+                        { t: data.times.shootingCall, d: "Shooting Call" },
+                        { t: data.times.lunch, d: "Lunch" },
+                        { t: data.times.supper, d: "Supper" },
+                        { t: data.times.wrap, d: "Estimated Wrap" }
+                    ].filter(item => item.t && item.t !== ""); // Only grab non-empty ones
+
+                    const newEvents = timings.map(item => ({
+                        id: generateId(), type: 'event', time: item.t, desc: item.d
+                    }));
+
+                    setData(p => ({ ...p, timeline: [...p.timeline, ...newEvents] }));
+                };
+
+                return (
+                    <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl animate-in fade-in">
+                        <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
+                            <div className="flex items-center gap-2 text-blue-400">
+                                <Icon name="list" size={18} />
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-200">Unified Schedule</h3>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={insertKeyTimings} className="bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 transition-colors mr-2"><Icon name="download" size={14} /> Auto-Add Key Timings</button>
+                                <button onClick={() => addItem('event')} className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 transition-colors"><Icon name="clock" size={14} /> Add Event</button>
+                                <button onClick={() => addItem('scene')} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 transition-colors"><Icon name="clapperboard" size={14} /> Add Scene</button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            {data.timeline.map((item, idx) => (
+                                <div key={item.id} className={`flex gap-2 items-start p-2 rounded border ${item.type === 'event' ? 'bg-gray-800/80 border-gray-600' : 'bg-gray-800/30 border-gray-800 hover:border-gray-600'} transition-colors`}>
+                                    <div className="flex flex-col gap-1 pt-1">
+                                        <button tabIndex="-1" onClick={() => moveItem('timeline', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button>
+                                        <button tabIndex="-1" onClick={() => moveItem('timeline', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button>
                                     </div>
-                                    <div className="space-y-1">
-                                        {dept.members.map(m => (
-                                            <div key={m.id} className="flex gap-1 text-xs">
-                                                <input className="w-1/3 bg-gray-900 border border-gray-700 rounded px-1" placeholder="Position" value={m.position} onChange={e => {
-                                                    const v = e.target.value;
-                                                    setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, members: d.members.map(x => x.id === m.id ? {...x, position: v}: x)} : d)}));
-                                                }} />
-                                                <input className="w-1/3 bg-gray-900 border border-gray-700 rounded px-1" placeholder="Name" value={m.name} onChange={e => {
-                                                    const v = e.target.value;
-                                                    setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, members: d.members.map(x => x.id === m.id ? {...x, name: v}: x)} : d)}));
-                                                }} />
-                                                <input className="w-1/4 bg-gray-900 border border-gray-700 rounded px-1 text-center" placeholder="Call" value={m.call} onChange={e => {
-                                                    const v = e.target.value;
-                                                    setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, members: d.members.map(x => x.id === m.id ? {...x, call: v}: x)} : d)}));
-                                                }} />
-                                                <button onClick={() => setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, members: d.members.filter(x => x.id !== m.id)} : d)}))} className="text-gray-600 hover:text-red-400">&times;</button>
-                                            </div>
-                                        ))}
-                                        <button onClick={() => setData(p => ({...p, crew: p.crew.map(d => d.id === dept.id ? {...d, members: [...d.members, {id: generateId(), position:"", name:"", call: data.times.crewCall}]} : d)}))} className="w-full text-center text-[10px] text-gray-500 hover:text-gray-300 mt-2 border border-dashed border-gray-700 rounded">+ Add Member</button>
+                                    
+                                    {item.type === 'event' ? (
+                                        <div className="flex-grow flex gap-4 items-center">
+                                            <div className="w-24"><input type="time" className="bg-transparent border-b border-gray-500 text-white text-sm w-full outline-none focus:border-blue-500" value={item.time} onChange={e => { const t = [...data.timeline]; t[idx].time = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
+                                            <div className="flex-grow"><input className="bg-transparent border-b border-gray-500 text-white text-sm w-full font-bold uppercase outline-none focus:border-blue-500" placeholder="Event Description" value={item.desc} onChange={e => { const t = [...data.timeline]; t[idx].desc = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex-grow grid grid-cols-12 gap-2 text-xs">
+                                            <div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center font-bold text-blue-400 outline-none focus:border-blue-500" placeholder="#" value={item.number} onChange={e => { const t = [...data.timeline]; t[idx].number = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
+                                            <div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center outline-none focus:border-blue-500" placeholder="I/E" value={item.intExt} onChange={e => { const t = [...data.timeline]; t[idx].intExt = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
+                                            <div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-700 font-bold uppercase outline-none focus:border-blue-500" placeholder="SET" value={item.set} onChange={e => { const t = [...data.timeline]; t[idx].set = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
+                                            <div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center outline-none focus:border-blue-500" placeholder="D/N" value={item.dayNight} onChange={e => { const t = [...data.timeline]; t[idx].dayNight = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
+                                            <div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center outline-none focus:border-blue-500" placeholder="Pgs" value={item.pages} onChange={e => { const t = [...data.timeline]; t[idx].pages = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
+                                            <div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center outline-none focus:border-blue-500" placeholder="Cast" value={item.cast} onChange={e => { const t = [...data.timeline]; t[idx].cast = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
+                                            <div className="col-span-4"><input className="w-full bg-transparent border-b border-gray-700 italic text-gray-400 outline-none focus:border-blue-500" placeholder="Scene Description" value={item.desc} onChange={e => { const t = [...data.timeline]; t[idx].desc = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-col gap-1">
+                                        <button tabIndex="-1" onClick={() => toggleVisibility(`timeline.${item.id}`)} className={data.hidden[`timeline.${item.id}`] ? "text-blue-400" : "text-gray-600 hover:text-blue-400"}><Icon name={data.hidden[`timeline.${item.id}`] ? "eye-off" : "eye"} size={14} /></button>
+                                        <button tabIndex="-1" onClick={() => setData(p => ({...p, timeline: p.timeline.filter(x => x.id !== item.id)}))} className="text-red-900 hover:text-red-500"><Icon name="x" size={14} /></button>
                                     </div>
                                 </div>
-                            );
-                        })}
+                            ))}
+                            {data.timeline.length === 0 && <div className="text-center py-8 text-gray-600 italic text-sm">Schedule is empty. Add events or scenes above.</div>}
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderCast = () => (
+                <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl animate-in fade-in">
+                    <div className="flex justify-between items-center mb-6">
+                        <SectionHeader title="Cast List" icon="user" />
+                        <button onClick={() => setData(p => ({...p, cast: [...p.cast, { id: generateId(), name: "", character: "", idNum: "", status: "", pickup: "", call: "", hmw: "", set: "", notes: "" }] }))} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add Row</button>
+                    </div>
+                    <div className="space-y-4">
+                        {data.cast.map((c, idx) => (
+                            <div key={c.id} className="bg-gray-800/50 p-3 rounded border border-gray-700/50 hover:border-gray-600 transition-colors">
+                                <div className="flex justify-between mb-2">
+                                    <div className="flex gap-2">
+                                        <button tabIndex="-1" onClick={() => moveItem('cast', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button>
+                                        <button tabIndex="-1" onClick={() => moveItem('cast', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button tabIndex="-1" onClick={() => toggleVisibility(`cast.${c.id}`)} className={data.hidden[`cast.${c.id}`] ? "text-blue-400" : "text-gray-600 hover:text-blue-400"}><Icon name={data.hidden[`cast.${c.id}`] ? "eye-off" : "eye"} size={14} /></button>
+                                        <button tabIndex="-1" onClick={() => setData(p => ({...p, cast: p.cast.filter(x => x.id !== c.id)}))} className="text-red-900 hover:text-red-500"><Icon name="x" size={14} /></button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-8 gap-3 text-xs">
+                                    <div className="col-span-1"><label className="text-[10px] text-gray-500 block mb-1">#</label><input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.idNum} onChange={e => { const l = [...data.cast]; l[idx].idNum = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                    <div className="col-span-3"><label className="text-[10px] text-gray-500 block mb-1">Character</label><input className="w-full bg-transparent border-b border-gray-600 font-bold uppercase focus:border-blue-500 outline-none" value={c.character} onChange={e => { const l = [...data.cast]; l[idx].character = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1">Talent Name</label><input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.name} onChange={e => { const l = [...data.cast]; l[idx].name = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1">Status (W, SW, etc)</label><input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.status} onChange={e => { const l = [...data.cast]; l[idx].status = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                    
+                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1">Pickup Time</label><input type="time" className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.pickup} onChange={e => { const l = [...data.cast]; l[idx].pickup = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1">Call Time</label><input type="time" className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.call} onChange={e => { const l = [...data.cast]; l[idx].call = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1">Hair/Makeup</label><input type="time" className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.hmw} onChange={e => { const l = [...data.cast]; l[idx].hmw = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1 text-blue-400">On Set</label><input type="time" className="w-full bg-transparent border-b border-gray-600 font-bold text-blue-400 focus:border-blue-500 outline-none" value={c.set} onChange={e => { const l = [...data.cast]; l[idx].set = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                </div>
+                            </div>
+                        ))}
+                        {data.cast.length === 0 && <div className="text-center py-8 text-gray-600 italic text-sm">Cast list is empty. Add a row to start.</div>}
                     </div>
                 </div>
             );
 
-            // --- MAIN LAYOUT ---
+            const renderCrew = () => (
+                <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl animate-in fade-in">
+                    <div className="flex justify-between items-center mb-6">
+                        <SectionHeader title="Crew List" icon="users" />
+                        <button onClick={() => setData(p => ({...p, crew: [...p.crew, { id: generateId(), dept: "", position: "", name: "", call: data.times.crewCall }] }))} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add Row</button>
+                    </div>
+                    <div className="space-y-4">
+                        {data.crew.map((c, idx) => (
+                            <div key={c.id} className="flex gap-2 items-center bg-gray-800/50 p-2 rounded border border-gray-700/50 hover:border-gray-600 transition-colors">
+                                <div className="flex flex-col gap-1">
+                                    <button tabIndex="-1" onClick={() => moveItem('crew', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button>
+                                    <button tabIndex="-1" onClick={() => moveItem('crew', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button>
+                                </div>
+                                <div className="flex-grow grid grid-cols-12 gap-3 text-xs items-center px-2">
+                                    <div className="col-span-3">
+                                        <label className="text-[10px] text-gray-500 block mb-1">Department</label>
+                                        <input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none uppercase font-bold text-gray-300" placeholder="e.g. CAMERA" value={c.dept} onChange={e => { const l = [...data.crew]; l[idx].dept = e.target.value; setData(p => ({...p, crew: l})); }} />
+                                    </div>
+                                    <div className="col-span-4">
+                                        <label className="text-[10px] text-gray-500 block mb-1">Role / Position</label>
+                                        <input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" placeholder="e.g. 1st AC" value={c.position} onChange={e => { const l = [...data.crew]; l[idx].position = e.target.value; setData(p => ({...p, crew: l})); }} />
+                                    </div>
+                                    <div className="col-span-3">
+                                        <label className="text-[10px] text-gray-500 block mb-1">Name</label>
+                                        <input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" placeholder="John Doe" value={c.name} onChange={e => { const l = [...data.crew]; l[idx].name = e.target.value; setData(p => ({...p, crew: l})); }} />
+                                    </div>
+                                    <div className="col-span-2">
+                                        <label className="text-[10px] text-gray-500 block mb-1">Call Time</label>
+                                        <input type="time" className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.call} onChange={e => { const l = [...data.crew]; l[idx].call = e.target.value; setData(p => ({...p, crew: l})); }} />
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-2 px-2">
+                                    <button tabIndex="-1" onClick={() => toggleVisibility(`crew.${c.id}`)} className={data.hidden[`crew.${c.id}`] ? "text-blue-400" : "text-gray-600 hover:text-blue-400"}><Icon name={data.hidden[`crew.${c.id}`] ? "eye-off" : "eye"} size={14} /></button>
+                                    <button tabIndex="-1" onClick={() => setData(p => ({...p, crew: p.crew.filter(x => x.id !== c.id)}))} className="text-red-900 hover:text-red-500"><Icon name="x" size={14} /></button>
+                                </div>
+                            </div>
+                        ))}
+                        {data.crew.length === 0 && <div className="text-center py-8 text-gray-600 italic text-sm">Crew list is empty. Add a row to start.</div>}
+                    </div>
+                </div>
+            );
 
+            // --- VIEW ---
             return (
                 <div className="flex h-screen w-full bg-[#0f172a] app-ui">
                     {/* SIDEBAR */}
                     <aside className="w-16 flex flex-col items-center py-6 bg-[#020617] border-r border-gray-800 z-50">
-                        <div className="mb-8 text-blue-500">
-                            <Icon name="clapperboard" size={28} />
-                        </div>
-                        
+                        <div className="mb-8 text-blue-500"><Icon name="clapperboard" size={28} /></div>
                         <div className="flex flex-col gap-4 w-full px-2">
-                            <button 
-                                onClick={() => setView('library')}
-                                className={`p-3 rounded-xl flex justify-center transition-all ${view === 'library' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-gray-500 hover:bg-gray-800 hover:text-gray-200'}`}
-                                title="Sheet Library"
-                            >
-                                <Icon name="library" size={20} />
-                            </button>
-                            <button 
-                                onClick={() => setView('editor')}
-                                className={`p-3 rounded-xl flex justify-center transition-all ${view === 'editor' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-gray-500 hover:bg-gray-800 hover:text-gray-200'}`}
-                                title="Editor"
-                            >
-                                <Icon name="edit-3" size={20} />
-                            </button>
-                            <button 
-                                onClick={() => setView('preview')}
-                                className={`p-3 rounded-xl flex justify-center transition-all ${view === 'preview' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-gray-500 hover:bg-gray-800 hover:text-gray-200'}`}
-                                title="Preview"
-                            >
-                                <Icon name="eye" size={20} />
-                            </button>
+                            <button onClick={() => setView('library')} className={`p-3 rounded-xl flex justify-center transition-all ${view === 'library' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-800'}`} title="Library"><Icon name="library" size={20} /></button>
+                            <button onClick={() => setView('editor')} className={`p-3 rounded-xl flex justify-center transition-all ${view === 'editor' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-800'}`} title="Editor"><Icon name="edit-3" size={20} /></button>
+                            <button onClick={() => setView('preview')} className={`p-3 rounded-xl flex justify-center transition-all ${view === 'preview' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-800'}`} title="Preview"><Icon name="eye" size={20} /></button>
                         </div>
-
-                        <div className="mt-auto">
-                            <button 
-                                onClick={saveToLibrary}
-                                className="p-3 text-green-500 hover:bg-gray-800 rounded-xl flex justify-center"
-                                title="Quick Save"
-                            >
-                                <Icon name="save" size={20} />
-                            </button>
-                        </div>
+                        <div className="mt-auto"><button onClick={saveToLibrary} className="p-3 text-green-500 hover:bg-gray-800 rounded-xl flex justify-center" title="Save Sheet"><Icon name="save" size={20} /></button></div>
                     </aside>
 
-                    {/* VIEW CONTENT */}
+                    {/* MAIN CONTENT */}
                     <main className="flex-grow flex flex-col overflow-hidden relative">
-                        
-                        {/* HEADER (Conditional) */}
+                        {/* Header */}
                         {view !== 'preview' && (
                             <header className="h-16 border-b border-gray-800 flex items-center justify-between px-8 bg-[#0f172a]">
-                                <div>
-                                    <h1 className="text-xl font-bold text-white tracking-tight">SimpleSheet</h1>
-                                    <p className="text-xs text-gray-500 font-mono">{data.name}</p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <input 
-                                        type="text" 
-                                        value={data.name} 
-                                        onChange={e => setData(p => ({...p, name: e.target.value}))}
-                                        className="bg-gray-800 border border-gray-700 rounded px-3 py-1 text-sm text-gray-200 focus:border-blue-500 outline-none w-64"
-                                        placeholder="Sheet Name..."
-                                    />
-                                    <span className="text-xs text-gray-500 px-2">v3.1</span>
+                                <div><h1 className="text-xl font-bold text-white tracking-tight">SimpleSheet</h1></div>
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-500">Watermark:</span>
+                                        <select value={data.meta.watermark} onChange={e => updateDeep('meta.watermark', e.target.value)} className="bg-gray-800 border border-gray-700 rounded text-xs px-2 py-1 text-gray-300 focus:outline-none"><option value="NONE">None</option><option value="DRAFT">Draft</option><option value="PRELIM">Prelim</option><option value="FINAL">Final</option></select>
+                                    </div>
+                                    <button onClick={exportJSON} className="text-xs text-blue-400 hover:text-white flex gap-1 items-center bg-blue-900/30 px-3 py-1 rounded border border-blue-800"><Icon name="download" size={12} /> Export JSON</button>
+                                    <div className="h-6 w-[1px] bg-gray-700 mx-2"></div>
+                                    <input type="text" value={data.name} onChange={e => setData(p => ({...p, name: e.target.value}))} className="bg-gray-800 border border-gray-700 rounded px-3 py-1 text-sm text-gray-200 focus:border-blue-500 outline-none w-48 font-bold" placeholder="Sheet Name..." />
                                 </div>
                             </header>
                         )}
 
-                        {/* LIBRARY VIEW */}
+                        {/* Library */}
                         {view === 'library' && (
-                            <div className="flex-grow p-8 overflow-y-auto library-view animate-in fade-in slide-in-from-left-4">
+                            <div className="flex-grow p-8 overflow-y-auto library-view animate-in fade-in">
                                 <div className="max-w-5xl mx-auto">
                                     <div className="flex justify-between items-end mb-8 border-b border-gray-800 pb-4">
-                                        <div>
-                                            <h2 className="text-3xl font-bold text-white mb-2">Sheet Library</h2>
-                                            <p className="text-gray-500">Manage your production documents locally.</p>
-                                        </div>
-                                        <div className="flex gap-3">
-                                            <label className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 text-sm font-medium transition-colors">
-                                                <Icon name="upload" size={16} /> Import JSON
-                                                <input type="file" accept=".json" className="hidden" onChange={importJSON} />
-                                            </label>
-                                            <button onClick={createNewSheet} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-lg shadow-blue-900/20 transition-all transform hover:scale-105">
-                                                <Icon name="plus" size={18} /> New Sheet
-                                            </button>
-                                        </div>
+                                        <div><h2 className="text-3xl font-bold text-white mb-2">Sheet Library</h2><p className="text-gray-500">Local Browser Storage</p></div>
+                                        <div className="flex gap-3"><label className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 text-sm font-medium"><Icon name="upload" size={16} /> Import<input type="file" accept=".json" className="hidden" onChange={importJSON} /></label><button onClick={createNewSheet} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-lg"><Icon name="plus" size={18} /> New</button></div>
                                     </div>
-
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                         {library.map(sheet => (
-                                            <div key={sheet.id} className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-blue-500/50 transition-all group relative overflow-hidden">
-                                                <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                                                    <button onClick={(e) => { e.stopPropagation(); deleteSheet(sheet.id); }} className="p-2 bg-red-900/80 text-white rounded hover:bg-red-700"><Icon name="trash" size={14} /></button>
-                                                </div>
-                                                <div onClick={() => loadSheet(sheet)} className="cursor-pointer">
-                                                    <div className="flex items-center gap-3 mb-3">
-                                                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-800 to-gray-700 flex items-center justify-center text-blue-400 font-bold border border-gray-700">
-                                                            CS
-                                                        </div>
-                                                        <div>
-                                                            <h3 className="font-bold text-white leading-tight">{sheet.name}</h3>
-                                                            <p className="text-xs text-gray-500 font-mono">{sheet.production.title}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex justify-between items-center mt-4 text-xs text-gray-500 border-t border-gray-800 pt-3">
-                                                        <span>{new Date(sheet.general.date).toLocaleDateString()}</span>
-                                                        <span>Day {sheet.general.dayCurrent}/{sheet.general.dayTotal}</span>
-                                                    </div>
-                                                </div>
+                                            <div key={sheet.id} className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-blue-500/50 transition-all group relative cursor-pointer" onClick={() => loadSheet(sheet)}>
+                                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); deleteSheet(sheet.id); }} className="p-2 text-red-500 hover:text-red-400"><Icon name="trash" size={14} /></button></div>
+                                                <div className="flex items-center gap-3 mb-3"><div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-blue-400 font-bold border border-gray-700">CS</div><div><h3 className="font-bold text-white">{sheet.name}</h3><p className="text-xs text-gray-500">{sheet.production.title}</p></div></div>
+                                                <div className="flex justify-between text-xs text-gray-500 border-t border-gray-800 pt-3"><span>{new Date(sheet.general.date).toLocaleDateString()}</span><span>Day {sheet.general.dayCurrent}/{sheet.general.dayTotal}</span></div>
                                             </div>
                                         ))}
-                                        {library.length === 0 && (
-                                            <div className="col-span-full py-20 text-center text-gray-600 border-2 border-dashed border-gray-800 rounded-xl">
-                                                <Icon name="ghost" size={48} className="mx-auto mb-4 opacity-50" />
-                                                <p>Library is empty. Create or Import a sheet.</p>
-                                            </div>
-                                        )}
+                                        {library.length === 0 && <div className="col-span-full py-20 text-center text-gray-600 border-2 border-dashed border-gray-800 rounded-xl"><Icon name="ghost" size={48} className="mx-auto mb-4 opacity-50" /><p>Library Empty</p></div>}
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* EDITOR VIEW */}
+                        {/* Editor */}
                         {view === 'editor' && (
                             <div className="flex-grow overflow-hidden flex flex-col editor-view">
-                                {/* TABS */}
                                 <div className="flex overflow-x-auto gap-1 px-4 pt-2 border-b border-gray-800 bg-[#0f172a] shrink-0 tabs">
-                                    {[
-                                        { id: 'general', label: 'General Info', icon: 'settings' },
-                                        { id: 'locations', label: 'Locations', icon: 'map-pin' },
-                                        { id: 'schedule', label: 'Schedule', icon: 'clock' },
-                                        { id: 'scenes', label: 'Shot List', icon: 'camera' },
-                                        { id: 'cast', label: 'Cast', icon: 'user' },
-                                        { id: 'crew', label: 'Crew', icon: 'users' },
-                                        { id: 'notes', label: 'Notes', icon: 'clipboard' },
-                                    ].map(tab => (
-                                        <button
-                                            key={tab.id}
-                                            onClick={() => setActiveTab(tab.id)}
-                                            className={`flex items-center gap-2 px-4 py-3 rounded-t-lg text-xs font-bold uppercase tracking-wide transition-all border-t border-x border-transparent ${activeTab === tab.id ? 'bg-[#1e293b] text-blue-400 border-gray-800' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'}`}
-                                        >
-                                            <Icon name={tab.icon} size={14} /> {tab.label}
-                                        </button>
+                                    {[{id:'general',l:'General',i:'settings'},{id:'locations',l:'Locations',i:'map-pin'},{id:'timeline',l:'Schedule',i:'list'},{id:'cast',l:'Cast',i:'user'},{id:'crew',l:'Crew',i:'users'},{id:'notes',l:'Notes',i:'clipboard'}].map(t => (
+                                        <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex items-center gap-2 px-4 py-3 rounded-t-lg text-xs font-bold uppercase transition-all ${activeTab === t.id ? 'bg-[#1e293b] text-blue-400' : 'text-gray-500 hover:text-gray-300'}`}><Icon name={t.i} size={14} /> {t.l}</button>
                                     ))}
                                 </div>
-
-                                {/* SCROLLABLE CONTENT */}
                                 <div className="flex-grow overflow-y-auto bg-[#1e293b] p-6">
                                     <div className="max-w-4xl mx-auto">
                                         {activeTab === 'general' && renderGeneral()}
-                                        {activeTab === 'locations' && renderDynamicList('locations', [
-                                            { key: 'type', label: 'Type', width: 'col-span-2' },
-                                            { key: 'name', label: 'Name', width: 'col-span-3' },
-                                            { key: 'address', label: 'Address', width: 'col-span-4' },
-                                            { key: 'note', label: 'Note', width: 'col-span-3' },
-                                        ], 'Locations')}
-                                        {activeTab === 'schedule' && renderDynamicList('schedule', [
-                                            { key: 'time', label: 'Time', type: 'time', width: 'col-span-2' },
-                                            { key: 'desc', label: 'Event Description', width: 'col-span-10' },
-                                        ], 'Daily Schedule')}
-                                        {activeTab === 'scenes' && renderDynamicList('scenes', [
-                                            { key: 'number', label: '#', width: 'col-span-1' },
-                                            { key: 'intExt', label: 'I/E', width: 'col-span-1' },
-                                            { key: 'set', label: 'Set', width: 'col-span-2' },
-                                            { key: 'dayNight', label: 'D/N', width: 'col-span-1' },
-                                            { key: 'pages', label: 'Pgs', width: 'col-span-1' },
-                                            { key: 'cast', label: 'Cast IDs', width: 'col-span-1' },
-                                            { key: 'desc', label: 'Description', width: 'col-span-5' },
-                                        ], 'Shot List')}
-                                        {activeTab === 'cast' && renderDynamicList('cast', [
-                                            { key: 'idNum', label: '#', width: 'col-span-1' },
-                                            { key: 'name', label: 'Name', width: 'col-span-3' },
-                                            { key: 'character', label: 'Character', width: 'col-span-2' },
-                                            { key: 'status', label: 'Stat', width: 'col-span-1' },
-                                            { key: 'pickup', label: 'PU', type: 'time', width: 'col-span-1' },
-                                            { key: 'call', label: 'Call', type: 'time', width: 'col-span-1' },
-                                            { key: 'hmw', label: 'H/M/W', type: 'time', width: 'col-span-1' },
-                                            { key: 'set', label: 'Set', type: 'time', width: 'col-span-2' },
-                                        ], 'Cast List')}
+                                        {activeTab === 'locations' && renderLocations()}
+                                        {activeTab === 'timeline' && renderTimeline()}
+                                        {activeTab === 'cast' && renderCast()}
                                         {activeTab === 'crew' && renderCrew()}
                                         {activeTab === 'notes' && (
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
@@ -890,333 +815,232 @@
                                                     <SectionHeader title="General Notes" icon="align-left" />
                                                     <ToggleTextArea label="Production Notes" path="notes.general" value={data.notes.general} onChange={v => updateDeep('notes.general', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={6} />
                                                     <ToggleTextArea label="Safety Notes" path="general.safetyNotes" value={data.general.safetyNotes} onChange={v => updateDeep('general.safetyNotes', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={3} />
+                                                    <ToggleInput label="Wifi Info" path="general.wifi" value={data.general.wifi} onChange={v => updateDeep('general.wifi', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                                                 </div>
                                                 <div className="space-y-4">
                                                     <SectionHeader title="Department Notes" icon="layers" />
-                                                    <ToggleTextArea label="Dept Specifics" path="notes.department" value={data.notes.department} onChange={v => updateDeep('notes.department', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={6} />
-                                                    
-                                                    {/* Walkies */}
-                                                    <div>
-                                                        <div className="flex justify-between items-center mb-2">
-                                                            <label className="text-[10px] font-bold text-gray-500 uppercase">Walkie Channels</label>
-                                                            <button 
-                                                                onClick={() => toggleVisibility('notes.walkies')} 
-                                                                className={data.hidden['notes.walkies'] ? "text-gray-600" : "text-blue-400"}
-                                                            >
-                                                                <Icon name={data.hidden['notes.walkies'] ? "eye-off" : "eye"} size={12} />
-                                                            </button>
-                                                        </div>
-                                                        <div className={`space-y-2 transition-opacity ${data.hidden['notes.walkies'] ? 'opacity-50' : ''}`}>
-                                                            {data.notes.walkies.map((w, i) => (
-                                                                <div key={i} className="flex gap-0">
-                                                                    <div className="bg-gray-800 border border-gray-700 text-gray-400 px-3 py-1 text-xs font-mono border-r-0 rounded-l flex items-center min-w-[30px] justify-center">{w.ch}</div>
-                                                                    <input 
-                                                                        className="bg-gray-900 border border-gray-700 text-gray-200 text-xs px-2 py-1 w-full rounded-r outline-none focus:border-blue-500" 
-                                                                        value={w.use}
-                                                                        onChange={e => {
-                                                                            const nw = [...data.notes.walkies];
-                                                                            nw[i].use = e.target.value;
-                                                                            setData(p => ({...p, notes: {...p.notes, walkies: nw}}));
-                                                                        }}
-                                                                    />
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                                                    <ToggleTextArea label="Camera/General" path="notes.department" value={data.notes.department} onChange={v => updateDeep('notes.department', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={3} />
+                                                    <ToggleTextArea label="Art" path="notes.art" value={data.notes.art} onChange={v => updateDeep('notes.art', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={2} />
+                                                    <ToggleTextArea label="Props" path="notes.props" value={data.notes.props} onChange={v => updateDeep('notes.props', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={2} />
+                                                    <ToggleTextArea label="Wardrobe" path="notes.wardrobe" value={data.notes.wardrobe} onChange={v => updateDeep('notes.wardrobe', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={2} />
+                                                    <ToggleTextArea label="Vehicles" path="notes.vehicles" value={data.notes.vehicles} onChange={v => updateDeep('notes.vehicles', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={2} />
+                                                    <div className="border-t border-gray-800 pt-2">
+                                                        <div className="flex justify-between items-center mb-2"><label className="text-[10px] font-bold text-gray-500 uppercase">Walkie Channels</label><button tabIndex="-1" onClick={() => toggleVisibility('notes.walkies')} className={data.hidden['notes.walkies'] ? "text-gray-600" : "text-blue-400"}><Icon name={data.hidden['notes.walkies'] ? "eye-off" : "eye"} size={12} /></button></div>
+                                                        <div className={`space-y-2 ${data.hidden['notes.walkies'] ? 'opacity-50' : ''}`}>{data.notes.walkies.map((w, i) => (<div key={i} className="flex gap-0"><div className="bg-gray-800 border border-gray-700 text-gray-400 px-2 py-1 text-xs font-mono border-r-0 rounded-l w-8 flex items-center justify-center">{w.ch}</div><input className="bg-gray-900 border border-gray-700 text-gray-200 text-xs px-2 py-1 w-full rounded-r outline-none focus:border-blue-500" value={w.use} onChange={e => { const nw = [...data.notes.walkies]; nw[i].use = e.target.value; setData(p => ({...p, notes: {...p.notes, walkies: nw}})); }} /></div>))}</div>
                                                     </div>
                                                 </div>
                                             </div>
                                         )}
-
-                                        <div className="mt-8 pt-8 border-t border-gray-700 flex justify-between items-center text-gray-400 text-xs">
-                                            <div className="flex gap-4 items-center">
-                                                <span>Watermark:</span>
-                                                <select 
-                                                    value={data.meta.watermark} 
-                                                    onChange={e => updateDeep('meta.watermark', e.target.value)}
-                                                    className="bg-gray-800 border-none rounded text-xs px-2 py-1 text-gray-200"
-                                                >
-                                                    <option value="NONE">None</option>
-                                                    <option value="DRAFT">Draft</option>
-                                                    <option value="PRELIM">Preliminary</option>
-                                                    <option value="FINAL">Final</option>
-                                                </select>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={exportJSON} className="hover:text-blue-400 flex items-center gap-1"><Icon name="download" size={14} /> Export JSON</button>
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* PREVIEW VIEW */}
+                        {/* Preview */}
                         <div className={`${view === 'preview' ? 'flex' : 'hidden'} flex-col items-center justify-start bg-[#525659] h-full overflow-auto relative py-12 preview-view`}>
-                            
-                            {/* FLOATING CONTROLS */}
                             <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 border border-gray-700 floating-controls">
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => setScale(Math.max(0.4, scale - 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="minus" size={16} /></button>
-                                    <span className="text-xs font-mono w-12 text-center">{Math.round(scale * 100)}%</span>
-                                    <button onClick={() => setScale(Math.min(1.5, scale + 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="plus" size={16} /></button>
-                                </div>
-                                <div className="h-4 w-[1px] bg-gray-700"></div>
-                                <button onClick={() => window.print()} className="flex items-center gap-2 font-bold text-sm text-green-400 hover:text-green-300">
-                                    <Icon name="printer" size={18} /> PRINT PDF
-                                </button>
+                                <div className="flex items-center gap-2"><button onClick={() => setScale(Math.max(0.4, scale - 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="minus" size={16} /></button><span className="text-xs font-mono w-12 text-center">{Math.round(scale * 100)}%</span><button onClick={() => setScale(Math.min(1.5, scale + 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="plus" size={16} /></button></div><div className="h-4 w-[1px] bg-gray-700"></div><button onClick={() => window.print()} className="flex items-center gap-2 font-bold text-sm text-green-400 hover:text-green-300"><Icon name="printer" size={18} /> PRINT PDF</button>
                             </div>
 
-                            {/* --- THE SHEET --- */}
-                            <div 
-                                className="print-sheet bg-white text-black shadow-2xl origin-top preview-wrapper relative overflow-hidden" 
-                                style={{ width: '210mm', minHeight: '297mm', transform: view === 'preview' ? `scale(${scale})` : 'none' }}
-                            >
-                                {/* WATERMARK */}
-                                {data.meta.watermark !== 'NONE' && (
-                                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-0 opacity-[0.08] overflow-hidden">
-                                        <h1 className="text-[150px] font-black -rotate-45 whitespace-nowrap border-4 border-black px-12 rounded-xl">{data.meta.watermark}</h1>
-                                    </div>
-                                )}
-
-                                {/* CONTENT */}
-                                <div className="relative z-10 p-[10mm] h-full flex flex-col font-sans text-[9px] leading-tight">
+                            <div className="print-sheet bg-white text-black shadow-2xl origin-top preview-wrapper relative overflow-hidden" style={{ width: '210mm', height: '297mm', transform: view === 'preview' ? `scale(${scale})` : 'none', marginBottom: '2rem' }}>
+                                {data.meta.watermark !== 'NONE' && <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-0 opacity-[0.08]"><h1 className="text-[150px] font-black -rotate-45 whitespace-nowrap border-4 border-black px-12 rounded-xl">{data.meta.watermark}</h1></div>}
+                                <div className="sheet-content relative z-10 h-full flex flex-col justify-between font-sans text-[9px] leading-tight p-[10mm]">
                                     
-                                    {/* HEADER */}
-                                    <div className="flex border-b-2 border-black pb-2 mb-2">
-                                        <div className="w-1/3 pr-4 border-r border-black flex flex-col justify-between">
-                                            {!data.hidden['production.company'] && <div className="font-header font-bold text-xl uppercase tracking-tighter leading-none mb-2">{data.production.company}</div>}
-                                            <div className="space-y-0.5 mt-auto">
-                                                {!data.hidden['production.producers'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">PROD</span> <span className="font-bold">{data.production.producers}</span></div>}
-                                                {!data.hidden['production.director'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">DIR</span> <span className="font-bold">{data.production.director}</span></div>}
-                                                {!data.hidden['production.ad'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">AD</span> <span className="font-bold">{data.production.ad}</span></div>}
-                                                {!data.hidden['general.scriptVer'] && <div className="flex justify-between border-b border-gray-300 text-red-700"><span className="text-gray-500">SCRIPT</span> <span className="font-bold">{data.general.scriptVer}</span></div>}
-                                            </div>
-                                        </div>
-                                        <div className="w-1/3 text-center px-2 flex flex-col items-center justify-center">
-                                            {!data.hidden['production.title'] && <h1 className="font-header text-3xl font-black uppercase tracking-widest">{data.production.title}</h1>}
-                                            {!data.hidden['times.crewCall'] && (
-                                                <div className="mt-2 border-2 border-black bg-black text-white px-4 py-1 text-lg font-bold">
-                                                    CALL: {data.times.crewCall}
+                                    <div className="flex-grow flex flex-col">
+                                        {/* HEADER */}
+                                        <div className="flex border-b-2 border-black pb-2 mb-2">
+                                            <div className="w-1/3 pr-4 border-r border-black flex flex-col justify-between">
+                                                {!data.hidden['production.company'] && <div className="font-header font-bold text-xl uppercase tracking-tighter leading-none mb-2">{data.production.company}</div>}
+                                                <div className="space-y-0.5 mt-auto">
+                                                    {!data.hidden['production.producers'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">PROD</span> <span className="font-bold">{data.production.producers}</span></div>}
+                                                    {!data.hidden['production.director'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">DIR</span> <span className="font-bold">{data.production.director}</span></div>}
+                                                    {!data.hidden['production.ad'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">AD</span> <span className="font-bold">{data.production.ad}</span></div>}
+                                                    {!data.hidden['general.scriptVer'] && <div className="flex justify-between border-b border-gray-300 text-red-700"><span className="text-gray-500">SCRIPT</span> <span className="font-bold">{data.general.scriptVer}</span></div>}
                                                 </div>
-                                            )}
-                                        </div>
-                                        <div className="w-1/3 pl-4 border-l border-black text-right flex flex-col justify-between">
-                                            {!data.hidden['general.date'] && <div className="font-header text-2xl font-bold uppercase">{new Date(data.general.date).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}).toUpperCase()}</div>}
-                                            {!data.hidden['general.dayCurrent'] && <div className="bg-gray-200 inline-block px-2 py-0.5 font-bold self-end border border-black">DAY {data.general.dayCurrent} OF {data.general.dayTotal}</div>}
-                                            <div className="text-[8px] mt-1 space-y-0.5">
-                                                {!data.hidden['general.weather'] && <div>{data.general.weather}</div>}
-                                                {(!data.hidden['general.sunrise'] || !data.hidden['general.sunset']) && <div>SR: {data.general.sunrise} | SS: {data.general.sunset}</div>}
+                                            </div>
+                                            <div className="w-1/3 text-center px-2 flex flex-col items-center justify-center">
+                                                {!data.hidden['production.title'] && <h1 className="font-header text-3xl font-black uppercase tracking-widest leading-none mb-1">{data.production.title}</h1>}
+                                                <div className="mt-2 w-full grid grid-cols-2 gap-1 text-[8px]">
+                                                    <div className="border border-black p-0.5 bg-black text-white font-bold">CALL: {formatTime(data.times.crewCall, data.settings.militaryTime)}</div>
+                                                    <div className="border border-black p-0.5 font-bold">SHOOT: {formatTime(data.times.shootingCall, data.settings.militaryTime)}</div>
+                                                    {!data.hidden['times.breakfast'] && <div className="border border-gray-400 p-0.5 text-gray-600 bg-gray-100">BFAST: {formatTime(data.times.breakfast, data.settings.militaryTime)}</div>}
+                                                    {!data.hidden['times.lunch'] && <div className="border border-gray-400 p-0.5 text-gray-600 bg-gray-100">LUNCH: {formatTime(data.times.lunch, data.settings.militaryTime)}</div>}
+                                                </div>
+                                            </div>
+                                            <div className="w-1/3 pl-4 border-l border-black text-right flex flex-col justify-between">
+                                                {!data.hidden['general.date'] && <div className="font-header text-2xl font-bold uppercase">{new Date(data.general.date).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}).toUpperCase()}</div>}
+                                                {!data.hidden['general.dayCurrent'] && <div className="bg-gray-200 inline-block px-2 py-0.5 font-bold self-end border border-black mt-1">DAY {data.general.dayCurrent} OF {data.general.dayTotal}</div>}
+                                                <div className="text-[8px] mt-1 space-y-0.5">
+                                                    {!data.hidden['general.weather'] && <div>{data.general.weather}</div>}
+                                                    {(!data.hidden['general.sunrise'] || !data.hidden['general.sunset']) && <div>SR: {formatTime(data.general.sunrise, data.settings.militaryTime)} | SS: {formatTime(data.general.sunset, data.settings.militaryTime)}</div>}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    {/* TOP ROW */}
-                                    <div className="grid grid-cols-12 gap-0 border-2 border-black mb-2">
-                                        {/* LOCATIONS */}
-                                        <div className="col-span-5 border-r border-black p-0">
-                                            <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Locations</div>
-                                            <div className="p-1 space-y-2">
-                                                {data.locations.map(loc => {
-                                                    if (data.hidden[`locations.${loc.id}`]) return null;
-                                                    return (
-                                                        <div key={loc.id}>
-                                                            <div className="font-bold uppercase text-[9px] underline decoration-gray-400">{loc.type}: {loc.name}</div>
-                                                            <div className="pl-2">{loc.address}</div>
-                                                            {loc.note && <div className="pl-2 italic text-gray-500">"{loc.note}"</div>}
-                                                        </div>
-                                                    );
-                                                })}
-                                                {!data.hidden['general.nearestHospital'] && (
-                                                    <div className="border-t border-dotted border-gray-400 pt-1 mt-1">
-                                                        <span className="font-bold text-red-600">HOSPITAL:</span> {data.general.nearestHospital}
-                                                        {(!data.hidden['general.police'] || !data.hidden['general.fire']) && <div className="grid grid-cols-2 gap-1 mt-1 text-gray-600">
-                                                             {!data.hidden['general.police'] && <div>POL: {data.general.police}</div>}
-                                                             {!data.hidden['general.fire'] && <div>FIRE: {data.general.fire}</div>}
-                                                        </div>}
+                                        {/* TOP ROW: LOCATIONS & TIMELINE */}
+                                        <div className="flex gap-2 border-b-2 border-black pb-2 mb-2 flex-grow h-[150mm]">
+                                            <div className="w-[35%] flex flex-col gap-2">
+                                                {/* LOCATIONS */}
+                                                <div className="border-2 border-black flex-grow">
+                                                    <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Locations</div>
+                                                    <div className="p-1 space-y-2">
+                                                        {!data.hidden['general.parking'] && <div className="text-[8px] italic border-b border-gray-300 pb-1 mb-1">🅿️ {data.general.parking}</div>}
+                                                        {data.locations.map(loc => {
+                                                            if (data.hidden[`locations.${loc.id}`]) return null;
+                                                            return (
+                                                                <div key={loc.id} className="relative">
+                                                                    {loc.isMain && <span className="absolute -left-1 top-0 text-black text-[8px]">★</span>}
+                                                                    <div className="font-bold uppercase text-[9px] underline decoration-gray-400 pl-2">{loc.type}: {loc.name}</div>
+                                                                    <div className="pl-2 leading-tight">{loc.address}</div>
+                                                                    {loc.note && <div className="pl-2 italic text-gray-500">{loc.note}</div>}
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
-                                                )}
-                                                {/* Advanced Location Fields */}
-                                                {(!data.hidden['general.parking'] || !data.hidden['general.wifi']) && (
-                                                    <div className="border-t border-dotted border-gray-400 pt-1 mt-1 space-y-1">
-                                                        {!data.hidden['general.parking'] && <div><span className="font-bold">PARKING:</span> {data.general.parking}</div>}
-                                                        {!data.hidden['general.wifi'] && <div><span className="font-bold">WIFI:</span> {data.general.wifi}</div>}
+                                                </div>
+                                                {/* EMERGENCY */}
+                                                <div className="border border-red-800 p-1 bg-red-50 text-[8px]">
+                                                    <div className="font-bold text-red-800 border-b border-red-200 mb-1 flex items-center justify-between">
+                                                        <span>EMERGENCY</span> <span>🚨</span>
                                                     </div>
-                                                )}
+                                                    {!data.hidden['general.nearestHospital'] && <div className="mb-0.5"><span className="font-bold text-red-900">HOSP:</span> {data.general.nearestHospital}</div>}
+                                                    {!data.hidden['general.police'] && <div className="mb-0.5"><span className="font-bold text-red-900">POLICE:</span> {data.general.police}</div>}
+                                                    {!data.hidden['general.fire'] && <div><span className="font-bold text-red-900">FIRE:</span> {data.general.fire}</div>}
+                                                </div>
                                             </div>
-                                        </div>
-                                        
-                                        {/* SCHEDULE */}
-                                        <div className="col-span-7">
-                                            <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Schedule</div>
-                                            <div className="grid grid-cols-12 text-[9px]">
-                                                 {/* Breakfast (Advanced) */}
-                                                 {!data.hidden['times.breakfast'] && (
-                                                    <>
-                                                        <div className="col-span-2 font-bold text-right pr-2 py-0.5 border-b border-gray-200">{data.times.breakfast}</div>
-                                                        <div className="col-span-10 py-0.5 border-b border-gray-200 font-bold bg-gray-50">BREAKFAST SERVED</div>
-                                                    </>
-                                                )}
 
-                                                {/* Header Times */}
-                                                {!data.hidden['times.crewCall'] && (
-                                                    <>
-                                                        <div className="col-span-2 font-bold text-right pr-2 py-0.5 border-b border-gray-200">{data.times.crewCall}</div>
-                                                        <div className="col-span-10 py-0.5 border-b border-gray-200 font-bold bg-gray-100">GENERAL CREW CALL</div>
-                                                    </>
-                                                )}
-                                                {!data.hidden['times.shootingCall'] && (
-                                                    <>
-                                                        <div className="col-span-2 font-bold text-right pr-2 py-0.5 border-b border-gray-200">{data.times.shootingCall}</div>
-                                                        <div className="col-span-10 py-0.5 border-b border-gray-200 font-bold">SHOOTING CALL</div>
-                                                    </>
-                                                )}
-
-                                                {/* Dynamic Schedule */}
-                                                {data.schedule.map(s => {
-                                                    if(data.hidden[`schedule.${s.id}`]) return null;
-                                                    return (
-                                                        <React.Fragment key={s.id}>
-                                                            <div className="col-span-2 font-bold text-right pr-2 py-0.5 border-b border-gray-200">{s.time}</div>
-                                                            <div className="col-span-10 py-0.5 border-b border-gray-200 uppercase">{s.desc}</div>
-                                                        </React.Fragment>
-                                                    );
-                                                })}
-
-                                                {/* Footer Times */}
-                                                {!data.hidden['times.lunch'] && (
-                                                    <>
-                                                        <div className="col-span-2 font-bold text-right pr-2 py-0.5 border-b border-gray-200">{data.times.lunch}</div>
-                                                        <div className="col-span-10 py-0.5 border-b border-gray-200 font-bold bg-gray-100">LUNCH</div>
-                                                    </>
-                                                )}
-                                                {!data.hidden['times.wrap'] && (
-                                                    <>
-                                                        <div className="col-span-2 font-bold text-right pr-2 py-0.5">{data.times.wrap}</div>
-                                                        <div className="col-span-10 py-0.5 font-bold">ESTIMATED WRAP</div>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* SHOT LIST */}
-                                    <div className="border-2 border-black mb-2">
-                                        <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Shot List</div>
-                                        <table className="w-full text-left border-collapse">
-                                            <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b border-black">
-                                                <tr>
-                                                    <th className="px-1 py-0.5 border-r border-black w-8 text-center">#</th>
-                                                    <th className="px-1 py-0.5 border-r border-black w-8 text-center">I/E</th>
-                                                    <th className="px-1 py-0.5 border-r border-black">Set & Description</th>
-                                                    <th className="px-1 py-0.5 border-r border-black w-8 text-center">D/N</th>
-                                                    <th className="px-1 py-0.5 border-r border-black w-10 text-center">Pgs</th>
-                                                    <th className="px-1 py-0.5 w-12 text-center">Cast</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-black">
-                                                {data.scenes.map((s, i) => {
-                                                    if(data.hidden[`scenes.${s.id}`]) return null;
-                                                    return (
-                                                        <tr key={s.id} className={i % 2 === 0 ? "bg-white" : "bg-gray-100"}>
-                                                            <td className="px-1 py-0.5 border-r border-black text-center font-bold">{s.number}</td>
-                                                            <td className="px-1 py-0.5 border-r border-black text-center">{s.intExt}</td>
-                                                            <td className="px-1 py-0.5 border-r border-black">
-                                                                <span className="font-bold uppercase block">{s.set}</span>
-                                                                <span className="italic text-[8px] text-gray-600 block leading-tight">{s.desc}</span>
-                                                            </td>
-                                                            <td className="px-1 py-0.5 border-r border-black text-center">{s.dayNight}</td>
-                                                            <td className="px-1 py-0.5 border-r border-black text-center">{s.pages}</td>
-                                                            <td className="px-1 py-0.5 text-center font-bold">{s.cast}</td>
+                                            {/* TIMELINE (Schedule + Shot List) */}
+                                            <div className="w-[65%] border-2 border-black">
+                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Schedule</div>
+                                                <table className="w-full text-left border-collapse">
+                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b border-black">
+                                                        <tr>
+                                                            <th className="px-1 w-10 text-right border-r border-gray-400">Time</th>
+                                                            <th className="px-1 w-6 text-center border-r border-gray-400">#</th>
+                                                            <th className="px-1 w-6 text-center border-r border-gray-400">I/E</th>
+                                                            <th className="px-1 border-r border-gray-400">Set / Description</th>
+                                                            <th className="px-1 w-6 text-center border-r border-gray-400">D/N</th>
+                                                            <th className="px-1 w-8 text-center border-r border-gray-400">Pgs</th>
+                                                            <th className="px-1 w-8 text-center">Cast</th>
                                                         </tr>
-                                                    );
-                                                })}
-                                                <tr className="bg-black text-white font-bold">
-                                                    <td colSpan="4" className="text-right px-2 py-0.5">TOTAL PAGES</td>
-                                                    <td className="text-center py-0.5 bg-gray-800">{sumPages(data.scenes, new Set(Object.keys(data.hidden).filter(k => k.startsWith('scenes.') && data.hidden[k]).map(k => k.split('.')[1])))}</td>
-                                                    <td></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-300">
+                                                        {data.timeline.map(item => {
+                                                            if (data.hidden[`timeline.${item.id}`]) return null;
+                                                            if (item.type === 'event') {
+                                                                return (
+                                                                    <tr key={item.id} className="bg-gray-100 font-bold border-t-2 border-gray-400 text-[9px]">
+                                                                        <td className="px-1 text-right border-r border-gray-400 bg-gray-200">{formatTime(item.time, data.settings.militaryTime)}</td>
+                                                                        <td colSpan="6" className="px-2 uppercase">{item.desc}</td>
+                                                                    </tr>
+                                                                );
+                                                            } else {
+                                                                return (
+                                                                    <tr key={item.id} className="text-[9px]">
+                                                                        <td className="px-1 text-right border-r border-gray-400 text-gray-300">--:--</td>
+                                                                        <td className="px-1 text-center font-bold border-r border-gray-400">{item.number}</td>
+                                                                        <td className="px-1 text-center border-r border-gray-400">{item.intExt}</td>
+                                                                        <td className="px-1 border-r border-gray-400">
+                                                                            <span className="font-bold uppercase">{item.set}</span>
+                                                                            <span className="block italic text-gray-600 leading-none pb-0.5">{item.desc}</span>
+                                                                        </td>
+                                                                        <td className="px-1 text-center border-r border-gray-400">{item.dayNight}</td>
+                                                                        <td className="px-1 text-center border-r border-gray-400">{item.pages}</td>
+                                                                        <td className="px-1 text-center font-bold">{item.cast}</td>
+                                                                    </tr>
+                                                                );
+                                                            }
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
 
-                                    {/* CAST */}
-                                    <div className="border-2 border-black mb-2">
-                                        <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Cast</div>
-                                        <table className="w-full text-center border-collapse">
-                                            <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b border-black">
-                                                <tr>
-                                                    <th className="border-r border-gray-400 w-6">#</th>
-                                                    <th className="border-r border-gray-400 text-left px-1">Character</th>
-                                                    <th className="border-r border-gray-400 text-left px-1">Talent</th>
-                                                    <th className="border-r border-gray-400 w-8">Stat</th>
-                                                    <th className="border-r border-gray-400 w-12">Pickup</th>
-                                                    <th className="border-r border-gray-400 w-12">Call</th>
-                                                    <th className="border-r border-gray-400 w-12">H/M/W</th>
-                                                    <th className="w-16">Set Call</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-300">
-                                                {data.cast.map(c => {
-                                                    if(data.hidden[`cast.${c.id}`]) return null;
-                                                    return (
-                                                        <tr key={c.id}>
-                                                            <td className="border-r border-gray-300 font-bold">{c.idNum}</td>
-                                                            <td className="border-r border-gray-300 text-left px-1 font-bold uppercase">{c.character}</td>
-                                                            <td className="border-r border-gray-300 text-left px-1">{c.name}</td>
-                                                            <td className="border-r border-gray-300 font-mono">{c.status}</td>
-                                                            <td className="border-r border-gray-300">{c.pickup}</td>
-                                                            <td className="border-r border-gray-300">{c.call}</td>
-                                                            <td className="border-r border-gray-300">{c.hmw}</td>
-                                                            <td className="font-bold bg-gray-100 border-l border-black">{c.set}</td>
+                                        {/* CAST & CREW */}
+                                        <div className="flex gap-2 mb-2 h-auto">
+                                            <div className="w-1/2 border-2 border-black">
+                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Cast</div>
+                                                <table className="w-full text-center border-collapse">
+                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b border-black">
+                                                        <tr>
+                                                            <th className="border-r border-gray-400 w-4">#</th>
+                                                            <th className="border-r border-gray-400 text-left px-1">Character</th>
+                                                            <th className="border-r border-gray-400 text-left px-1">Talent</th>
+                                                            <th className="border-r border-gray-400 w-6">PU</th>
+                                                            <th className="border-r border-gray-400 w-6">Call</th>
+                                                            <th className="w-6 bg-gray-300">Set</th>
                                                         </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    {/* CREW */}
-                                    <div className="flex-grow">
-                                        <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase mb-1">Crew</div>
-                                        <div className="columns-3 gap-2 text-[8px] items-start">
-                                            {data.crew.map(dept => {
-                                                if(data.hidden[`dept.${dept.id}`]) return null;
-                                                return (
-                                                    <div key={dept.id} className="mb-2 break-inside-avoid">
-                                                        <div className="font-bold border-b border-black mb-0.5 uppercase">{dept.department}</div>
-                                                        {dept.members.map(m => (
-                                                            <div key={m.id} className="flex justify-between items-baseline leading-snug">
-                                                                <div className="truncate pr-1"><span className="font-semibold">{m.position}</span> {m.name}</div>
-                                                                <div className="font-mono text-gray-600">{m.call}</div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                );
-                                            })}
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-300">
+                                                        {data.cast.map(c => {
+                                                            if(data.hidden[`cast.${c.id}`]) return null;
+                                                            return (
+                                                                <tr key={c.id}>
+                                                                    <td className="border-r border-gray-300 font-bold">{c.idNum}</td>
+                                                                    <td className="border-r border-gray-300 text-left px-1 font-bold uppercase">{c.character}</td>
+                                                                    <td className="border-r border-gray-300 text-left px-1 truncate max-w-[60px]">{c.name}</td>
+                                                                    <td className="border-r border-gray-300">{formatTime(c.pickup, data.settings.militaryTime)}</td>
+                                                                    <td className="border-r border-gray-300">{formatTime(c.call, data.settings.militaryTime)}</td>
+                                                                    <td className="font-bold bg-gray-100">{formatTime(c.set, data.settings.militaryTime)}</td>
+                                                                </tr>
+                                                            )
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            <div className="w-1/2 border-2 border-black">
+                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Crew</div>
+                                                <table className="w-full text-left border-collapse">
+                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b border-black">
+                                                        <tr>
+                                                            <th className="border-r border-gray-400 px-1 w-1/4">Dept</th>
+                                                            <th className="border-r border-gray-400 px-1 w-1/3">Role</th>
+                                                            <th className="border-r border-gray-400 px-1">Name</th>
+                                                            <th className="w-8 text-center bg-gray-300">Call</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-300">
+                                                        {data.crew.map(c => {
+                                                            if(data.hidden[`crew.${c.id}`]) return null;
+                                                            return (
+                                                                <tr key={c.id}>
+                                                                    <td className="border-r border-gray-300 px-1 font-bold uppercase text-[8px]">{c.dept}</td>
+                                                                    <td className="border-r border-gray-300 px-1">{c.position}</td>
+                                                                    <td className="border-r border-gray-300 px-1 truncate">{c.name}</td>
+                                                                    <td className="text-center font-bold bg-gray-100">{formatTime(c.call, data.settings.militaryTime)}</td>
+                                                                </tr>
+                                                            )
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    {/* FOOTER - NOTES */}
+                                    {/* FOOTER - NOTES - FORCED TO BOTTOM */}
                                     <div className="mt-auto border-t-2 border-black pt-1">
                                         <div className="grid grid-cols-2 gap-2 text-[9px] mb-2">
-                                            <div className="border border-black p-1">
-                                                <div className="font-bold underline">NOTES:</div>
+                                            <div className="border border-black p-1 bg-gray-50">
+                                                <div className="font-bold underline mb-1">GENERAL NOTES:</div>
                                                 {!data.hidden['notes.general'] && <div className="whitespace-pre-wrap leading-tight">{data.notes.general}</div>}
                                                 {!data.hidden['general.safetyNotes'] && <div className="mt-1 font-bold text-red-600">{data.general.safetyNotes}</div>}
+                                                {!data.hidden['general.wifi'] && <div className="mt-1 text-gray-600 font-mono text-[8px]">WIFI: {data.general.wifi}</div>}
                                             </div>
-                                            <div className="border border-black p-1">
-                                                <div className="font-bold underline">DEPT NOTES:</div>
-                                                {!data.hidden['notes.department'] && <div className="whitespace-pre-wrap leading-tight">{data.notes.department}</div>}
+                                            <div className="border border-black p-1 grid grid-cols-2 gap-2">
+                                                <div>
+                                                    {!data.hidden['notes.department'] && <div className="mb-1"><span className="font-bold underline">CAM/GEN:</span> {data.notes.department}</div>}
+                                                    {!data.hidden['notes.props'] && <div className="mb-1"><span className="font-bold underline">PROPS:</span> {data.notes.props}</div>}
+                                                    {!data.hidden['notes.wardrobe'] && <div className="mb-1"><span className="font-bold underline">WARD:</span> {data.notes.wardrobe}</div>}
+                                                </div>
+                                                <div>
+                                                    {!data.hidden['notes.art'] && <div className="mb-1"><span className="font-bold underline">ART:</span> {data.notes.art}</div>}
+                                                    {!data.hidden['notes.vehicles'] && <div className="mb-1"><span className="font-bold underline">VEHIC:</span> {data.notes.vehicles}</div>}
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="bg-black text-white p-1 text-[8px] flex justify-between items-center">
-                                            <div className="flex gap-2 font-mono">
-                                                {!data.hidden['notes.walkies'] && (
-                                                    <>
-                                                        <span className="font-bold">WALKIES:</span>
-                                                        {data.notes.walkies.map(w => <span key={w.ch} className="bg-gray-800 px-1">{w.ch}:{w.use}</span>)}
-                                                    </>
-                                                )}
+                                        <div className="bg-black text-white p-1 text-[8px] flex justify-between items-center h-[16px]">
+                                            <div className="flex gap-2 font-mono items-center">
+                                                {!data.hidden['notes.walkies'] && data.notes.walkies.map(w => <span key={w.ch} className="bg-gray-800 px-1 border border-gray-600 rounded-sm">CH{w.ch}:{w.use}</span>)}
                                             </div>
                                             <div>
                                                 {!data.hidden['production.officeEmail'] && data.production.officeEmail} 
@@ -1229,7 +1053,6 @@
                                 </div>
                             </div>
                         </div>
-
                     </main>
                 </div>
             );
