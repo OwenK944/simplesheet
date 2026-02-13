@@ -29,35 +29,32 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #0f172a; /* Slate 900 */
+            background-color: #0f172a;
             color: #e2e8f0;
-            overflow: hidden; /* App handles scrolling */
+            overflow: hidden;
         }
 
         .font-header { font-family: 'Oswald', sans-serif; }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
 
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #1e293b; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 
-        /* --- PREVIEW SCALING --- */
         .preview-wrapper {
             transform-origin: top center;
             transition: transform 0.2s;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
 
-        /* --- PRINT STYLES (The Output) --- */
+        /* --- PRINT STYLES --- */
         @media print {
             @page {
                 size: A4 portrait;
                 margin: 0;
             }
 
-            /* GLOBAL RESET */
             body, html {
                 background-color: white !important;
                 width: 100% !important;
@@ -67,22 +64,11 @@
                 overflow: visible !important;
             }
 
-            /* HIDE UI ELEMENTS */
-            .app-ui > aside,          /* Sidebar */
-            .app-ui > main > header,  /* Top Header */
-            .tabs,                    /* Editor Tabs */
-            .library-view,            /* Library Screen */
-            .editor-view,             /* Editor Screen */
-            .floating-controls,       /* Zoom Pill */
-            .no-print {
+            .app-ui > aside, .app-ui > main > header, .tabs, .library-view, .editor-view, .floating-controls, .no-print {
                 display: none !important;
             }
 
-            /* UNLOCK LAYOUT CONTAINERS */
-            #root, 
-            .app-ui, 
-            .app-ui > main, 
-            .preview-view {
+            #root, .app-ui, .app-ui > main, .preview-view {
                 display: block !important;
                 position: static !important;
                 width: 100% !important;
@@ -93,7 +79,6 @@
                 padding: 0 !important;
             }
 
-            /* CONFIGURE THE SHEET */
             .print-sheet {
                 display: flex !important;
                 flex-direction: column !important;
@@ -103,31 +88,41 @@
                 top: auto !important;
                 transform: none !important;
                 width: 210mm !important;
-                height: 297mm !important;     /* Force full A4 height */
+                min-height: 297mm !important;
+                height: 297mm !important; /* Force exact A4 height */
                 box-shadow: none !important;
                 border: none !important;
                 padding: 0 !important;
             }
 
-            /* COLOR & CONTRAST SAFETY */
+            .sheet-content {
+                display: flex !important;
+                flex-direction: column !important;
+                height: 100% !important;
+                padding: 5mm !important;
+            }
+
+            /* FORCE COLORS & BOLDNESS */
             * {
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
-                color: black !important;
                 border-color: #000 !important;
             }
             
             .text-white { color: white !important; }
             .bg-black { background-color: black !important; color: white !important; }
-            .bg-gray-800 { background-color: #333 !important; color: white !important; }
+            .bg-gray-800 { background-color: #222 !important; color: white !important; }
             .bg-gray-200 { background-color: #e5e5e5 !important; }
-            .bg-gray-300 { background-color: #d4d4d4 !important; }
             .bg-gray-100 { background-color: #f3f4f6 !important; }
             
-            /* Hide toggle buttons in print */
-            button {
-                display: none !important;
-            }
+            .text-red-600 { color: #dc2626 !important; }
+            .border-red-600 { border-color: #dc2626 !important; }
+            
+            /* Thicker borders for print legibility */
+            .border-2 { border-width: 2px !important; }
+            .border-b-2 { border-bottom-width: 2px !important; }
+            
+            button { display: none !important; }
         }
     </style>
 </head>
@@ -137,67 +132,50 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- ICONS WRAPPER ---
         const Icon = ({ name, size = 16, className = "" }) => {
-            useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            }, [name]);
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
             return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
         };
 
-        // --- UTILS ---
         const generateId = () => Math.random().toString(36).substr(2, 9);
         
+        const formatTime = (timeStr, useMilitary) => {
+            if (!timeStr) return "";
+            const [hour, min] = timeStr.split(':');
+            const h = parseInt(hour, 10);
+            if (useMilitary) return `${hour}:${min}`; 
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const h12 = h % 12 || 12;
+            return `${h12}:${min} ${ampm}`;
+        };
+
+        const formatDate = (dateString) => {
+            if (!dateString) return "TBD";
+            const date = new Date(dateString + 'T00:00:00');
+            return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+        };
+
         const wmoCodeToText = (code) => {
-            const codes = {
-                0: "Clear", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
-                45: "Fog", 48: "Rime Fog",
-                51: "Light Drizzle", 53: "Drizzle", 55: "Dense Drizzle",
-                61: "Slight Rain", 63: "Rain", 65: "Heavy Rain",
-                71: "Snow", 73: "Mod. Snow", 75: "Heavy Snow",
-                95: "Thunderstorm"
-            };
+            const codes = { 0: "Clear", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast", 45: "Fog", 51: "Drizzle", 61: "Rain", 71: "Snow", 95: "Thunderstorm" };
             return codes[code] || "Variable";
         };
 
-        const formatTime = (timeStr, useMilitary) => {
-            if (!timeStr) return "";
-            if (useMilitary) return timeStr; // Input is usually HH:MM 24h
-            const [hour, min] = timeStr.split(':');
-            const h = parseInt(hour, 10);
-            const ampm = h >= 12 ? 'PM' : 'AM';
-            const h12 = h % 12 || 12;
-            return `${h12}:${min}${ampm}`;
-        };
-
-        // --- INITIAL DATA ---
         const initialData = {
             id: generateId(),
             name: "New Call Sheet",
             lastModified: Date.now(),
-            settings: {
-                militaryTime: false, // Default to standard time visually
-            },
-            hidden: {
-                // Defaults disabled as per request
-                'general.wifi': true,
-                'times.breakfast': true,
-                'times.supper': true,
-                'notes.props': true,
-                'notes.sfx': true,
-                'notes.vehicles': true,
-                'notes.wardrobe': true,
-                'notes.art': true,
-            }, 
+            settings: { militaryTime: false },
+            hidden: { 'general.scriptVer': false }, 
             meta: { watermark: "DRAFT" },
             production: { 
                 title: "PROJECT TITLE", 
                 company: "INDEPENDENT STUDIOS", 
+                studioAddress: "123 Studio Blvd, Los Angeles, CA",
                 producers: "Jane Doe, John Smith", 
                 director: "Alice Director", 
                 ad: "Bob Assistant",
                 officePhone: "555-0199",
-                officeEmail: "production@indie.film"
+                officeEmail: "prod@indie.film"
             },
             general: { 
                 date: new Date().toISOString().split('T')[0], 
@@ -205,59 +183,55 @@
                 dayTotal: 15, 
                 zipCode: "90210",
                 scriptVer: "White",
-                weather: "72°F - Sunny", 
+                crewCall: "07:00",
+                weatherHigh: "75",
+                weatherLow: "55",
+                weatherCond: "Sunny",
+                weatherPrecip: "0%",
                 sunrise: "06:30", 
                 sunset: "19:45",
-                nearestHospital: "City General (2.4 miles)",
-                police: "911 or Local Station",
-                fire: "911 or Local Station",
                 safetyNotes: "Safety Meeting at Call. Hydrate often.",
-                wifi: "Network: Studio_Guest / Pass: film123",
-                parking: "Crew park in Lot B. Shuttles every 15 mins."
+                wifi: "Network: Studio_Guest / Pass: film123"
             },
-            times: { 
-                breakfast: "06:30",
-                crewCall: "07:00", 
-                shootingCall: "08:00", 
-                lunch: "13:00",
-                supper: "19:00",
-                wrap: "19:00" 
-            },
-            locations: [
-                { id: generateId(), type: "BASECAMP", name: "Parking Lot C", address: "100 Studio Dr, Los Angeles, CA", note: "Crew park here", isMain: false },
-                { id: generateId(), type: "LOCATION", name: "The Warehouse", address: "500 Industrial Way, Los Angeles, CA", note: "Shuttle from Base", isMain: true }
+            keyTimings: [
+                { id: 'kt1', label: 'Crew Call', time: '07:00' },
+                { id: 'kt2', label: 'Shooting Call', time: '08:00' },
+                { id: 'kt3', label: 'Est Wrap', time: '19:00' }
             ],
-            // Combined Schedule and Shot List
+            locations: [
+                { id: 'loc1', type: 'BASECAMP', name: 'Parking Lot C', address: '100 Studio Dr', desc: 'Crew Park Here', category: 'Basecamp', amenities: ['Restrooms', 'Catering'], parkingInstr: '', hospital: '' },
+                { id: 'loc2', type: 'SET', name: 'The Warehouse', address: '500 Industrial Way', desc: 'Shuttle from Base', category: 'Set', amenities: [], parkingInstr: '', hospital: 'City Gen (2.4mi)' }
+            ],
             timeline: [
-                { id: generateId(), type: 'event', time: "07:00", desc: "CREW CALL / BREAKFAST" },
-                { id: generateId(), type: 'event', time: "08:00", desc: "SHOOTING CALL" },
-                { id: generateId(), type: 'scene', number: "24", intExt: "INT", set: "WAREHOUSE", dayNight: "DAY", pages: "4/8", cast: "1, 2", desc: "The deal goes bad." },
-                { id: generateId(), type: 'event', time: "13:00", desc: "LUNCH (30 Minutes)" },
-                { id: generateId(), type: 'scene', number: "25", intExt: "EXT", set: "ALLEYWAY", dayNight: "NIGHT", pages: "2/8", cast: "1", desc: "Running away." },
-                { id: generateId(), type: 'event', time: "19:00", desc: "ESTIMATED WRAP" }
+                { id: 't1', type: 'event', time: "07:00", title: "CREW CALL", desc: "Breakfast Served" },
+                { id: 't2', type: 'event', time: "08:00", title: "SHOOTING CALL", desc: "" },
+                { id: 's1', type: 'scene', time: "08:30", number: "24", intExt: "INT", set: "WAREHOUSE", dayNight: "DAY", pages: "4/8", cast: "1, 2", desc: "The deal goes bad." },
+                { id: 't3', type: 'event', time: "13:00", title: "LUNCH", desc: "30 Minutes" },
+                { id: 's2', type: 'scene', time: "13:30", number: "25", intExt: "EXT", set: "ALLEYWAY", dayNight: "NIGHT", pages: "2/8", cast: "1", desc: "Running away." },
+                { id: 't4', type: 'event', time: "19:00", title: "ESTIMATED WRAP", desc: "" }
             ],
             cast: [
-                { id: generateId(), name: "Liam Lead", character: "JACK", idNum: "1", status: "W", pickup: "06:30", call: "07:00", hmw: "07:15", set: "08:00", notes: "" },
-                { id: generateId(), name: "Sarah Star", character: "JILL", idNum: "2", status: "SW", pickup: "08:00", call: "08:30", hmw: "08:45", set: "09:30", notes: "" }
+                { id: 'c1', name: "Liam Lead", character: "JACK", idNum: "1", status: "W", pickup: "06:30", hmw: "06:45", call: "07:30", set: "08:00" },
+                { id: 'c2', name: "Sarah Star", character: "JILL", idNum: "2", status: "SW", pickup: "08:00", hmw: "08:15", call: "09:00", set: "09:30" }
             ],
-            // Flat Crew List
+            extras: [
+                { id: 'e1', count: "10", desc: "Pedestrians", call: "08:00", notes: "Casual fall attire" }
+            ],
             crew: [
-                { id: generateId(), dept: "CAMERA", position: "DP", name: "Chivo", call: "07:00" },
-                { id: generateId(), dept: "SOUND", position: "Mixer", name: "Sound Guy", call: "07:00" }
+                { id: 'cr1', dept: "CAMERA", position: "DP", name: "Chivo", call: "07:00", notes: "" },
+                { id: 'cr2', dept: "SOUND", position: "Mixer", name: "Sound Guy", call: "07:00", notes: "" }
             ],
-            notes: {
-                general: "Let's make a movie! Please verify your timecards.",
-                department: "Camera: New LUTs loaded. \nArt: Please reset Sc 24 after take 1.",
-                props: "Guns (Rubber)",
-                sfx: "Atmosphere smoke",
-                vehicles: "Hero Car",
-                wardrobe: "Jack Look 1",
-                art: "Breakaway table",
-                walkies: [{ ch: 1, use: "MAIN" }, { ch: 2, use: "OPEN" }, { ch: 3, use: "CAM" }]
-            }
+            notes: { general: "Let's make a movie! Please verify your timecards." },
+            deptNotes: [
+                { id: 'dn1', category: 'PROPS', note: 'Guns (Rubber)' },
+                { id: 'dn2', category: 'ART', note: 'Breakaway table' }
+            ],
+            walkies: [
+                { id: 'w1', ch: "1", desc: "MAIN" },
+                { id: 'w2', ch: "2", desc: "OPEN" },
+                { id: 'w3', ch: "3", desc: "CAM" }
+            ]
         };
-
-        // --- COMPONENTS ---
 
         const ToggleInput = ({ label, value, onChange, path, hiddenMap, onToggle, type = "text", className = "", placeholder="" }) => {
             const isHidden = hiddenMap[path];
@@ -265,22 +239,11 @@
                 <div className={`flex flex-col ${className} group`}>
                     <div className="flex justify-between items-center mb-1">
                         {label && <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{label}</label>}
-                        <button 
-                            onClick={() => onToggle(path)} 
-                            title={isHidden ? "Show in Preview" : "Hide in Preview"}
-                            className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`}
-                            tabIndex="-1"
-                        >
+                        <button onClick={() => onToggle(path)} className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`} tabIndex="-1">
                             <Icon name={isHidden ? "eye-off" : "eye"} size={12} />
                         </button>
                     </div>
-                    <input 
-                        type={type} 
-                        value={value || ""} 
-                        onChange={e => onChange(e.target.value)}
-                        placeholder={placeholder}
-                        className={`bg-gray-800 border ${isHidden ? 'border-dashed border-gray-700 opacity-60' : 'border-gray-700'} text-gray-200 rounded px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all placeholder-gray-600`}
-                    />
+                    <input type={type} value={value || ""} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={`bg-gray-800 border ${isHidden ? 'border-dashed border-gray-700 opacity-60' : 'border-gray-700'} text-gray-200 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none`} />
                 </div>
             );
         };
@@ -291,20 +254,11 @@
                 <div className="flex flex-col group">
                     <div className="flex justify-between items-center mb-1">
                         {label && <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{label}</label>}
-                        <button 
-                            onClick={() => onToggle(path)} 
-                            className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`}
-                            tabIndex="-1"
-                        >
+                        <button onClick={() => onToggle(path)} className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`} tabIndex="-1">
                             <Icon name={isHidden ? "eye-off" : "eye"} size={12} />
                         </button>
                     </div>
-                    <textarea 
-                        value={value || ""} 
-                        onChange={e => onChange(e.target.value)}
-                        rows={rows}
-                        className={`bg-gray-800 border ${isHidden ? 'border-dashed border-gray-700 opacity-60' : 'border-gray-700'} text-gray-200 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none resize-none placeholder-gray-600`}
-                    />
+                    <textarea value={value || ""} onChange={e => onChange(e.target.value)} rows={rows} className={`bg-gray-800 border ${isHidden ? 'border-dashed border-gray-700 opacity-60' : 'border-gray-700'} text-gray-200 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none resize-none`} />
                 </div>
             );
         };
@@ -316,7 +270,6 @@
             </div>
         );
 
-        // --- MAIN APP ---
         const App = () => {
             const [data, setData] = useState(initialData);
             const [view, setView] = useState('library');
@@ -327,23 +280,21 @@
 
             useEffect(() => {
                 const savedLib = localStorage.getItem('simpleSheet_library');
-                if (savedLib) {
-                    try { setLibrary(JSON.parse(savedLib)); } catch(e) {}
-                }
+                if (savedLib) try { setLibrary(JSON.parse(savedLib)); } catch(e) {}
                 setTimeout(() => window.lucide && window.lucide.createIcons(), 100);
             }, []);
 
-            useEffect(() => {
-                localStorage.setItem('simpleSheet_library', JSON.stringify(library));
-            }, [library]);
+            useEffect(() => { localStorage.setItem('simpleSheet_library', JSON.stringify(library)); }, [library]);
 
-            // --- DATA HELPERS ---
             const updateDeep = (path, value) => {
                 setData(prev => {
                     const newData = { ...prev };
                     let current = newData;
                     const parts = path.split('.');
-                    for (let i = 0; i < parts.length - 1; i++) current = current[parts[i]];
+                    for (let i = 0; i < parts.length - 1; i++) {
+                        if (current[parts[i]] === undefined) current[parts[i]] = {};
+                        current = current[parts[i]];
+                    }
                     current[parts[parts.length - 1]] = value;
                     return newData;
                 });
@@ -352,8 +303,7 @@
             const toggleVisibility = (path) => {
                 setData(prev => {
                     const newHidden = { ...prev.hidden };
-                    if (newHidden[path]) delete newHidden[path];
-                    else newHidden[path] = true;
+                    newHidden[path] = !newHidden[path];
                     return { ...prev, hidden: newHidden };
                 });
             };
@@ -361,41 +311,26 @@
             const moveItem = (listKey, index, direction) => {
                 setData(prev => {
                     const list = [...prev[listKey]];
-                    if (direction === 'up' && index > 0) {
-                        [list[index], list[index - 1]] = [list[index - 1], list[index]];
-                    } else if (direction === 'down' && index < list.length - 1) {
-                        [list[index], list[index + 1]] = [list[index + 1], list[index]];
-                    }
+                    if (direction === 'up' && index > 0) [list[index], list[index - 1]] = [list[index - 1], list[index]];
+                    else if (direction === 'down' && index < list.length - 1) [list[index], list[index + 1]] = [list[index + 1], list[index]];
                     return { ...prev, [listKey]: list };
                 });
             };
 
-            // --- ACTIONS ---
             const saveToLibrary = () => {
                 const now = Date.now();
                 const newData = { ...data, lastModified: now };
                 setData(newData);
                 setLibrary(prev => {
                     const existingIdx = prev.findIndex(item => item.id === newData.id);
-                    if (existingIdx >= 0) {
-                        const newLib = [...prev];
-                        newLib[existingIdx] = newData;
-                        return newLib;
-                    }
+                    if (existingIdx >= 0) { const newLib = [...prev]; newLib[existingIdx] = newData; return newLib; }
                     return [newData, ...prev];
                 });
-                alert("Sheet saved to Library!");
-            };
-
-            const loadSheet = (sheet) => { setData(sheet); setView('editor'); };
-            const deleteSheet = (id) => {
-                if(confirm("Are you sure?")) {
-                    setLibrary(prev => prev.filter(item => item.id !== id));
-                    if (data.id === id) setData(initialData);
-                }
+                alert("Saved!");
             };
             const createNewSheet = () => { setData({ ...initialData, id: generateId(), name: "New Call Sheet", lastModified: Date.now() }); setView('editor'); };
-            
+            const loadSheet = (sheet) => { setData(sheet); setView('editor'); };
+            const deleteSheet = (id) => { if(confirm("Delete?")) setLibrary(prev => prev.filter(item => item.id !== id)); };
             const exportJSON = () => {
                 const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
                 const anchor = document.createElement('a');
@@ -403,81 +338,61 @@
                 anchor.download = `${data.name.replace(/\s+/g, '_')}.json`;
                 anchor.click();
             };
-
             const importJSON = (e) => {
                 const fr = new FileReader();
                 fr.readAsText(e.target.files[0]);
-                fr.onload = ev => {
-                    try {
-                        const parsed = JSON.parse(ev.target.result);
-                        parsed.id = generateId(); 
-                        setData(parsed);
-                        saveToLibrary();
-                        setView('editor');
-                    } catch(err) { alert("Invalid JSON"); }
-                };
+                fr.onload = ev => { try { const parsed = JSON.parse(ev.target.result); parsed.id = generateId(); setData(parsed); saveToLibrary(); setView('editor'); } catch(err) {} };
             };
 
             const fetchWeather = async () => {
-                if (!data.general.zipCode) return alert("Enter Zip Code");
+                if (!data.general.zipCode) return alert("Enter Zip");
                 setWeatherLoading(true);
                 try {
                     const geoRes = await fetch(`https://api.zippopotam.us/us/${data.general.zipCode}`);
                     if (!geoRes.ok) throw new Error("Zip not found");
                     const geoData = await geoRes.json();
-                    const { latitude, longitude, "place name": city, state } = geoData.places[0];
-                    const wRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,sunrise,sunset&current_weather=true&temperature_unit=fahrenheit&timezone=auto`);
+                    const { latitude, longitude } = geoData.places[0];
+                    const wRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,sunrise,sunset,temperature_2m_max,temperature_2m_min,precipitation_probability_max&current_weather=true&temperature_unit=fahrenheit&timezone=auto`);
                     const wData = await wRes.json();
-                    
-                    const weatherStr = `${Math.round(wData.current_weather.temperature)}°F - ${wmoCodeToText(wData.current_weather.weathercode)}`;
-                    const sr = new Date(wData.daily.sunrise[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
-                    const ss = new Date(wData.daily.sunset[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
-
+                    const daily = wData.daily;
+                    const sr = new Date(daily.sunrise[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
+                    const ss = new Date(daily.sunset[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
                     setData(p => ({
                         ...p,
-                        general: { ...p.general, weather: weatherStr, sunrise: sr, sunset: ss },
-                        locations: p.locations.length === 0 ? [{ id: generateId(), type: "SHOOT", name: `${city}, ${state}`, address: "", isMain: true }] : p.locations
+                        general: { ...p.general, weatherCond: wmoCodeToText(wData.current_weather.weathercode), weatherHigh: Math.round(daily.temperature_2m_max[0]), weatherLow: Math.round(daily.temperature_2m_min[0]), weatherPrecip: daily.precipitation_probability_max[0] + "%", sunrise: sr, sunset: ss }
                     }));
-                } catch (e) { alert("Weather error: " + e.message); } 
+                } catch (e) { alert("Weather error"); } 
                 finally { setWeatherLoading(false); }
             };
 
-            // --- TABS RENDERERS ---
-
             const renderGeneral = () => (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in">
-                    {/* Header Info */}
                     <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
                         <SectionHeader title="Header Info" icon="clapperboard" />
                         <div className="space-y-4">
                             <ToggleInput label="Project Title" path="production.title" value={data.production.title} onChange={v => updateDeep('production.title', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                            <div className="grid grid-cols-2 gap-4">
-                                <ToggleInput label="Company" path="production.company" value={data.production.company} onChange={v => updateDeep('production.company', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                <ToggleInput label="Script Ver" path="general.scriptVer" value={data.general.scriptVer} onChange={v => updateDeep('general.scriptVer', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                            </div>
+                            <ToggleInput label="Company" path="production.company" value={data.production.company} onChange={v => updateDeep('production.company', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            <ToggleInput label="Studio Address" path="production.studioAddress" value={data.production.studioAddress} onChange={v => updateDeep('production.studioAddress', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             <div className="grid grid-cols-2 gap-4">
                                 <ToggleInput label="Director" path="production.director" value={data.production.director} onChange={v => updateDeep('production.director', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                                 <ToggleInput label="Producers" path="production.producers" value={data.production.producers} onChange={v => updateDeep('production.producers', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <ToggleInput label="1st AD" path="production.ad" value={data.production.ad} onChange={v => updateDeep('production.ad', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                <ToggleInput label="Phone" path="production.officePhone" value={data.production.officePhone} onChange={v => updateDeep('production.officePhone', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="General Crew Call" path="general.crewCall" value={data.general.crewCall} onChange={v => updateDeep('general.crewCall', v)} type="time" hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             </div>
-                            <ToggleInput label="Email" path="production.officeEmail" value={data.production.officeEmail} onChange={v => updateDeep('production.officeEmail', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <ToggleInput label="Phone" path="production.officePhone" value={data.production.officePhone} onChange={v => updateDeep('production.officePhone', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="Email" path="production.officeEmail" value={data.production.officeEmail} onChange={v => updateDeep('production.officeEmail', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
                         </div>
                     </div>
-
-                    {/* Date & Weather */}
                     <div className="space-y-8">
                         <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
                             <SectionHeader title="Date & Weather" icon="sun" />
                             <div className="flex gap-2 items-end mb-4 bg-gray-800/50 p-3 rounded border border-gray-700">
-                                <div className="flex-grow">
-                                    <ToggleInput label="Zip Code" path="general.zipCode" value={data.general.zipCode} onChange={v => updateDeep('general.zipCode', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} placeholder="Enter Zip" />
-                                </div>
-                                <button onClick={fetchWeather} disabled={weatherLoading} className="mb-0.5 h-[38px] px-4 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold transition-colors flex items-center gap-2 disabled:opacity-50">
-                                    {weatherLoading ? <Icon name="loader-2" className="animate-spin" /> : <Icon name="cloud-lightning" />} Fetch
-                                </button>
+                                <div className="flex-grow"><ToggleInput label="Zip Code" path="general.zipCode" value={data.general.zipCode} onChange={v => updateDeep('general.zipCode', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} /></div>
+                                <button onClick={fetchWeather} disabled={weatherLoading} className="mb-0.5 h-[38px] px-4 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold flex items-center gap-2">{weatherLoading ? "..." : "Fetch"}</button>
                             </div>
                             <div className="grid grid-cols-2 gap-4 mb-4">
                                 <ToggleInput type="date" label="Date" path="general.date" value={data.general.date} onChange={v => updateDeep('general.date', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
@@ -486,298 +401,217 @@
                                     <ToggleInput type="number" label="Total" path="general.dayTotal" value={data.general.dayTotal} onChange={v => updateDeep('general.dayTotal', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} className="w-1/2" />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-3 gap-2">
-                                <ToggleInput label="Weather" path="general.weather" value={data.general.weather} onChange={v => updateDeep('general.weather', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} className="col-span-1" />
+                            <div className="grid grid-cols-4 gap-2">
+                                <ToggleInput label="High" path="general.weatherHigh" value={data.general.weatherHigh} onChange={v => updateDeep('general.weatherHigh', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="Low" path="general.weatherLow" value={data.general.weatherLow} onChange={v => updateDeep('general.weatherLow', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="Precip" path="general.weatherPrecip" value={data.general.weatherPrecip} onChange={v => updateDeep('general.weatherPrecip', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                                <ToggleInput label="Cond" path="general.weatherCond" value={data.general.weatherCond} onChange={v => updateDeep('general.weatherCond', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mt-2">
                                 <ToggleInput type="time" label="Sunrise" path="general.sunrise" value={data.general.sunrise} onChange={v => updateDeep('general.sunrise', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                                 <ToggleInput type="time" label="Sunset" path="general.sunset" value={data.general.sunset} onChange={v => updateDeep('general.sunset', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
                             </div>
-                            
-                            {/* Global Settings */}
-                            <div className="mt-4 pt-4 border-t border-gray-700 flex justify-between items-center">
-                                <span className="text-xs font-bold text-gray-400">PDF Output Time Format</span>
-                                <div className="flex bg-gray-800 rounded p-1">
-                                    <button onClick={() => updateDeep('settings.militaryTime', false)} className={`px-3 py-1 text-xs rounded ${!data.settings.militaryTime ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>12h Standard</button>
-                                    <button onClick={() => updateDeep('settings.militaryTime', true)} className={`px-3 py-1 text-xs rounded ${data.settings.militaryTime ? 'bg-blue-600 text-white' : 'text-gray-400'}`}>24h Military</button>
-                                </div>
-                            </div>
                         </div>
-
-                        {/* Key Timings (Header Config) */}
                         <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
-                            <SectionHeader title="Key Timings (Header)" icon="clock" />
-                            <div className="grid grid-cols-2 gap-4 mb-4">
-                                <ToggleInput type="time" label="Crew Call" path="times.crewCall" value={data.times.crewCall} onChange={v => updateDeep('times.crewCall', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                <ToggleInput type="time" label="Shooting Call" path="times.shootingCall" value={data.times.shootingCall} onChange={v => updateDeep('times.shootingCall', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                                <ToggleInput type="time" label="Breakfast" path="times.breakfast" value={data.times.breakfast} onChange={v => updateDeep('times.breakfast', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                <ToggleInput type="time" label="Lunch" path="times.lunch" value={data.times.lunch} onChange={v => updateDeep('times.lunch', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                <ToggleInput type="time" label="Supper" path="times.supper" value={data.times.supper} onChange={v => updateDeep('times.supper', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                            </div>
-                            <div className="mt-4">
-                                <ToggleInput type="time" label="Est Wrap" path="times.wrap" value={data.times.wrap} onChange={v => updateDeep('times.wrap', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                            </div>
+                            <div className="flex justify-between mb-4"><SectionHeader title="Key Timings" icon="clock" /><button onClick={() => setData(p => ({...p, keyTimings: [...p.keyTimings, {id: generateId(), label: "", time: ""}]}))} className="text-blue-400 text-xs"><Icon name="plus" size={14} /></button></div>
+                            {data.keyTimings.map((kt, idx) => (
+                                <div key={kt.id} className="flex gap-2 mb-2">
+                                    <input className="bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1 rounded w-1/2" value={kt.label} onChange={e => {const k=[...data.keyTimings]; k[idx].label=e.target.value; setData(p=>({...p, keyTimings:k}))}} placeholder="Label" />
+                                    <input type="time" className="bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1 rounded w-1/3" value={kt.time} onChange={e => {const k=[...data.keyTimings]; k[idx].time=e.target.value; setData(p=>({...p, keyTimings:k}))}} />
+                                    <button onClick={() => setData(p => ({...p, keyTimings: p.keyTimings.filter(x => x.id !== kt.id)}))} className="text-red-500"><Icon name="x" size={14} /></button>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
             );
 
             const renderLocations = () => {
-                const addLoc = () => setData(p => ({...p, locations: [...p.locations, { id: generateId(), type: "LOCATION", name: "", address: "", note: "", isMain: false }]}));
+                const addLoc = () => setData(p => ({...p, locations: [...p.locations, { id: generateId(), type: "", name: "", address: "", desc: "", category: "Set", amenities: [], parkingInstr: "", hospital: "" }]}));
                 return (
                     <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl animate-in fade-in">
-                        <div className="flex justify-between items-center mb-6">
-                            <SectionHeader title="Locations & Parking" icon="map-pin" />
-                            <button onClick={addLoc} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add</button>
-                        </div>
-                        
-                        {/* Global Parking */}
-                        <div className="mb-6 p-4 bg-blue-900/20 border border-blue-800/50 rounded-lg">
-                            <ToggleTextArea label="Global Parking Notes" path="general.parking" value={data.general.parking} onChange={v => updateDeep('general.parking', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={2} />
-                        </div>
-
-                        {/* Location List */}
-                        <div className="space-y-3">
+                        <div className="flex justify-between items-center mb-6"><SectionHeader title="Locations" icon="map-pin" /><button onClick={addLoc} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add Location</button></div>
+                        <div className="space-y-4">
                             {data.locations.map((loc, idx) => (
-                                <div key={loc.id} className="flex gap-2 items-start bg-gray-800/50 p-3 rounded border border-gray-700/50">
-                                    <div className="flex flex-col gap-1 pt-2">
-                                        <button tabIndex="-1" onClick={() => moveItem('locations', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button>
-                                        <button tabIndex="-1" onClick={() => moveItem('locations', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button>
+                                <div key={loc.id} className="bg-gray-800/50 p-4 rounded border border-gray-700/50">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <select className="bg-gray-900 text-blue-400 text-xs font-bold border border-gray-700 rounded px-2 py-1 uppercase" value={loc.category} onChange={e => {const l=[...data.locations]; l[idx].category=e.target.value; setData(p=>({...p, locations:l}))}}><option value="Set">Set</option><option value="Basecamp">Basecamp</option><option value="Parking">Parking</option></select>
+                                        <div className="flex gap-2">
+                                            <button tabIndex="-1" onClick={() => moveItem('locations', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button>
+                                            <button tabIndex="-1" onClick={() => moveItem('locations', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button>
+                                            <button tabIndex="-1" onClick={() => toggleVisibility(`locations.${loc.id}`)} className={data.hidden[`locations.${loc.id}`] ? "text-blue-400" : "text-gray-600"}><Icon name="eye" size={14} /></button>
+                                            <button tabIndex="-1" onClick={() => setData(p => ({...p, locations: p.locations.filter(l => l.id !== loc.id)}))} className="text-red-500"><Icon name="x" size={14} /></button>
+                                        </div>
                                     </div>
-                                    <button 
-                                        tabIndex="-1"
-                                        onClick={() => setData(p => ({...p, locations: p.locations.map(l => ({...l, isMain: l.id === loc.id}))}))} 
-                                        className={`mt-2 ${loc.isMain ? 'text-yellow-400' : 'text-gray-600 hover:text-gray-400'}`}
-                                        title="Set as Main Location"
-                                    >
-                                        <Icon name="star" size={18} fill={loc.isMain ? "currentColor" : "none"} />
-                                    </button>
-                                    <div className="flex-grow grid grid-cols-12 gap-2">
-                                        <div className="col-span-2"><input className="w-full bg-transparent border-b border-gray-600 text-xs py-1 text-gray-300" placeholder="Type" value={loc.type} onChange={e => { const l = [...data.locations]; l[idx].type = e.target.value; setData(p => ({...p, locations: l})); }} /></div>
-                                        <div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-600 text-xs py-1 text-gray-300 font-bold" placeholder="Name" value={loc.name} onChange={e => { const l = [...data.locations]; l[idx].name = e.target.value; setData(p => ({...p, locations: l})); }} /></div>
-                                        <div className="col-span-4"><input className="w-full bg-transparent border-b border-gray-600 text-xs py-1 text-gray-300" placeholder="Address" value={loc.address} onChange={e => { const l = [...data.locations]; l[idx].address = e.target.value; setData(p => ({...p, locations: l})); }} /></div>
-                                        <div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-600 text-xs py-1 text-gray-300 italic" placeholder="Notes" value={loc.note} onChange={e => { const l = [...data.locations]; l[idx].note = e.target.value; setData(p => ({...p, locations: l})); }} /></div>
+                                    <div className="grid grid-cols-12 gap-3 text-xs mb-3">
+                                        <div className="col-span-2"><input className="w-full bg-transparent border-b border-gray-600" placeholder="Type" value={loc.type} onChange={e => {const l=[...data.locations]; l[idx].type=e.target.value; setData(p=>({...p, locations:l}))}} /></div>
+                                        <div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-600 font-bold" placeholder="Name" value={loc.name} onChange={e => {const l=[...data.locations]; l[idx].name=e.target.value; setData(p=>({...p, locations:l}))}} /></div>
+                                        <div className="col-span-4"><input className="w-full bg-transparent border-b border-gray-600" placeholder="Address" value={loc.address} onChange={e => {const l=[...data.locations]; l[idx].address=e.target.value; setData(p=>({...p, locations:l}))}} /></div>
+                                        <div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-600 italic" placeholder="Description" value={loc.desc} onChange={e => {const l=[...data.locations]; l[idx].desc=e.target.value; setData(p=>({...p, locations:l}))}} /></div>
                                     </div>
-                                    <div className="flex flex-col gap-1">
-                                        <button tabIndex="-1" onClick={() => toggleVisibility(`locations.${loc.id}`)} className={data.hidden[`locations.${loc.id}`] ? "text-blue-400" : "text-gray-600"}><Icon name={data.hidden[`locations.${loc.id}`] ? "eye-off" : "eye"} size={14} /></button>
-                                        <button tabIndex="-1" onClick={() => setData(p => ({...p, locations: p.locations.filter(l => l.id !== loc.id)}))} className="text-red-900 hover:text-red-500"><Icon name="x" size={14} /></button>
-                                    </div>
+                                    {loc.category === 'Set' && (<div className="bg-red-900/20 border border-red-900/50 p-2 rounded flex items-center gap-2"><label className="text-[10px] font-bold text-red-400 uppercase">Hospital:</label><input className="w-full bg-transparent border-b border-red-800 text-xs text-red-200" placeholder="Name & Address" value={loc.hospital} onChange={e => {const l=[...data.locations]; l[idx].hospital=e.target.value; setData(p=>({...p, locations:l}))}} /></div>)}
+                                    {loc.category === 'Parking' && (<div className="bg-blue-900/20 border border-blue-900/50 p-2 rounded flex items-center gap-2"><label className="text-[10px] font-bold text-blue-400 uppercase">Instr:</label><input className="w-full bg-transparent border-b border-blue-800 text-xs text-blue-200" placeholder="Details..." value={loc.parkingInstr} onChange={e => {const l=[...data.locations]; l[idx].parkingInstr=e.target.value; setData(p=>({...p, locations:l}))}} /></div>)}
+                                    {loc.category === 'Basecamp' && (<div className="p-2 border border-gray-700 rounded"><label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Includes:</label><div className="flex gap-4 flex-wrap">{['Catering', 'Restrooms', 'Trailers', 'Equipment Truck', 'Wardrobe', 'HMU'].map(opt => (<label key={opt} className="flex items-center gap-1 text-xs text-gray-300"><input type="checkbox" checked={loc.amenities.includes(opt)} onChange={e => {const l=[...data.locations]; if(e.target.checked) l[idx].amenities.push(opt); else l[idx].amenities = l[idx].amenities.filter(x => x !== opt); setData(p=>({...p, locations:l}));}} /> {opt}</label>))}</div></div>)}
                                 </div>
                             ))}
-                        </div>
-
-                        {/* Emergency Services */}
-                        <div className="mt-8 bg-red-900/10 border border-red-900/30 rounded-lg p-6">
-                            <SectionHeader title="Safety & Emergency" icon="shield-alert" />
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div>
-                                    <div className="flex justify-between items-center mb-1">
-                                        <label className="text-[10px] font-bold text-red-400 uppercase">Nearest Hospital</label>
-                                        <button onClick={() => window.open(`https://www.google.com/maps/search/hospital+near+${data.locations.find(l=>l.isMain)?.address || data.general.zipCode}`, '_blank')} className="text-[10px] bg-red-900/60 px-2 rounded text-white flex items-center gap-1 hover:bg-red-800"><Icon name="map" size={10} /> Find</button>
-                                    </div>
-                                    <ToggleInput path="general.nearestHospital" value={data.general.nearestHospital} onChange={v => updateDeep('general.nearestHospital', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                </div>
-                                <ToggleInput label="Police Station" path="general.police" value={data.general.police} onChange={v => updateDeep('general.police', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                <ToggleInput label="Fire Station" path="general.fire" value={data.general.fire} onChange={v => updateDeep('general.fire', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                            </div>
                         </div>
                     </div>
                 );
             };
 
-            const renderTimeline = () => {
-                const addItem = (type) => {
-                    const item = type === 'event' 
-                        ? { id: generateId(), type: 'event', time: "", desc: "New Event" }
-                        : { id: generateId(), type: 'scene', number: "", intExt: "INT", set: "", dayNight: "DAY", pages: "", cast: "", desc: "" };
-                    setData(p => ({...p, timeline: [...p.timeline, item]}));
-                };
-
-                const insertKeyTimings = () => {
-                    const timings = [
-                        { t: data.times.breakfast, d: "Breakfast" },
-                        { t: data.times.crewCall, d: "General Crew Call" },
-                        { t: data.times.shootingCall, d: "Shooting Call" },
-                        { t: data.times.lunch, d: "Lunch" },
-                        { t: data.times.supper, d: "Supper" },
-                        { t: data.times.wrap, d: "Estimated Wrap" }
-                    ].filter(item => item.t && item.t !== ""); // Only grab non-empty ones
-
-                    const newEvents = timings.map(item => ({
-                        id: generateId(), type: 'event', time: item.t, desc: item.d
-                    }));
-
-                    setData(p => ({ ...p, timeline: [...p.timeline, ...newEvents] }));
-                };
-
+            const renderSchedule = () => {
+                const addItem = (type) => setData(p => ({...p, timeline: [...p.timeline, type === 'event' ? {id: generateId(), type:'event', time:"", title:"", desc:""} : {id: generateId(), type:'scene', time:"", number:"", intExt:"INT", set:"", dayNight:"DAY", pages:"", cast:"", desc:""}]}));
+                const sortTimeline = () => setData(p => ({...p, timeline: [...p.timeline].sort((a,b) => (a.time || "").localeCompare(b.time || ""))}));
                 return (
                     <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl animate-in fade-in">
-                        <div className="flex justify-between items-center mb-6 border-b border-gray-700 pb-4">
-                            <div className="flex items-center gap-2 text-blue-400">
-                                <Icon name="list" size={18} />
-                                <h3 className="text-sm font-bold uppercase tracking-wider text-gray-200">Unified Schedule</h3>
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={insertKeyTimings} className="bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 transition-colors mr-2"><Icon name="download" size={14} /> Auto-Add Key Timings</button>
-                                <button onClick={() => addItem('event')} className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 transition-colors"><Icon name="clock" size={14} /> Add Event</button>
-                                <button onClick={() => addItem('scene')} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 transition-colors"><Icon name="clapperboard" size={14} /> Add Scene</button>
-                            </div>
-                        </div>
-
+                        <div className="flex justify-between items-center mb-6"><SectionHeader title="Schedule" icon="list" /><div className="flex gap-2"><button onClick={sortTimeline} className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1 border border-gray-700"><Icon name="arrow-up-down" size={14} /> Sort</button><button onClick={() => addItem('event')} className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="clock" size={14} /> Add Event</button><button onClick={() => addItem('scene')} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="clapperboard" size={14} /> Add Scene</button></div></div>
                         <div className="space-y-2">
                             {data.timeline.map((item, idx) => (
-                                <div key={item.id} className={`flex gap-2 items-start p-2 rounded border ${item.type === 'event' ? 'bg-gray-800/80 border-gray-600' : 'bg-gray-800/30 border-gray-800 hover:border-gray-600'} transition-colors`}>
-                                    <div className="flex flex-col gap-1 pt-1">
-                                        <button tabIndex="-1" onClick={() => moveItem('timeline', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button>
-                                        <button tabIndex="-1" onClick={() => moveItem('timeline', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button>
-                                    </div>
-                                    
-                                    {item.type === 'event' ? (
-                                        <div className="flex-grow flex gap-4 items-center">
-                                            <div className="w-24"><input type="time" className="bg-transparent border-b border-gray-500 text-white text-sm w-full outline-none focus:border-blue-500" value={item.time} onChange={e => { const t = [...data.timeline]; t[idx].time = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
-                                            <div className="flex-grow"><input className="bg-transparent border-b border-gray-500 text-white text-sm w-full font-bold uppercase outline-none focus:border-blue-500" placeholder="Event Description" value={item.desc} onChange={e => { const t = [...data.timeline]; t[idx].desc = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex-grow grid grid-cols-12 gap-2 text-xs">
-                                            <div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center font-bold text-blue-400 outline-none focus:border-blue-500" placeholder="#" value={item.number} onChange={e => { const t = [...data.timeline]; t[idx].number = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
-                                            <div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center outline-none focus:border-blue-500" placeholder="I/E" value={item.intExt} onChange={e => { const t = [...data.timeline]; t[idx].intExt = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
-                                            <div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-700 font-bold uppercase outline-none focus:border-blue-500" placeholder="SET" value={item.set} onChange={e => { const t = [...data.timeline]; t[idx].set = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
-                                            <div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center outline-none focus:border-blue-500" placeholder="D/N" value={item.dayNight} onChange={e => { const t = [...data.timeline]; t[idx].dayNight = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
-                                            <div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center outline-none focus:border-blue-500" placeholder="Pgs" value={item.pages} onChange={e => { const t = [...data.timeline]; t[idx].pages = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
-                                            <div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center outline-none focus:border-blue-500" placeholder="Cast" value={item.cast} onChange={e => { const t = [...data.timeline]; t[idx].cast = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
-                                            <div className="col-span-4"><input className="w-full bg-transparent border-b border-gray-700 italic text-gray-400 outline-none focus:border-blue-500" placeholder="Scene Description" value={item.desc} onChange={e => { const t = [...data.timeline]; t[idx].desc = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
-                                        </div>
-                                    )}
-
-                                    <div className="flex flex-col gap-1">
-                                        <button tabIndex="-1" onClick={() => toggleVisibility(`timeline.${item.id}`)} className={data.hidden[`timeline.${item.id}`] ? "text-blue-400" : "text-gray-600 hover:text-blue-400"}><Icon name={data.hidden[`timeline.${item.id}`] ? "eye-off" : "eye"} size={14} /></button>
-                                        <button tabIndex="-1" onClick={() => setData(p => ({...p, timeline: p.timeline.filter(x => x.id !== item.id)}))} className="text-red-900 hover:text-red-500"><Icon name="x" size={14} /></button>
-                                    </div>
+                                <div key={item.id} className={`flex gap-2 items-start p-2 rounded border ${item.type === 'event' ? 'bg-gray-800/80 border-gray-600' : 'bg-gray-800/30 border-gray-800'}`}>
+                                    <div className="flex flex-col gap-1 pt-1"><button tabIndex="-1" onClick={() => moveItem('timeline', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button><button tabIndex="-1" onClick={() => moveItem('timeline', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button></div>
+                                    <div className="w-20 pt-1"><input type="time" className="bg-transparent border-b border-gray-500 text-white text-sm w-full" value={item.time} onChange={e => { const t = [...data.timeline]; t[idx].time = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
+                                    {item.type === 'event' ? (<div className="flex-grow flex flex-col gap-1"><input className="bg-transparent border-b border-gray-500 text-white text-sm font-bold uppercase w-full" placeholder="EVENT TITLE" value={item.title} onChange={e => { const t = [...data.timeline]; t[idx].title = e.target.value; setData(p => ({...p, timeline: t})); }} /><input className="bg-transparent border-b border-gray-600 text-gray-400 text-xs w-full" placeholder="Description" value={item.desc} onChange={e => { const t = [...data.timeline]; t[idx].desc = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>) : (<div className="flex-grow grid grid-cols-12 gap-2 text-xs"><div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center font-bold text-blue-400" placeholder="#" value={item.number} onChange={e => { const t = [...data.timeline]; t[idx].number = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center" placeholder="I/E" value={item.intExt} onChange={e => { const t = [...data.timeline]; t[idx].intExt = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-700 font-bold uppercase" placeholder="SET" value={item.set} onChange={e => { const t = [...data.timeline]; t[idx].set = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center" placeholder="D/N" value={item.dayNight} onChange={e => { const t = [...data.timeline]; t[idx].dayNight = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center" placeholder="Pgs" value={item.pages} onChange={e => { const t = [...data.timeline]; t[idx].pages = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center" placeholder="Cast" value={item.cast} onChange={e => { const t = [...data.timeline]; t[idx].cast = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-4"><input className="w-full bg-transparent border-b border-gray-700 italic text-gray-400" placeholder="Description" value={item.desc} onChange={e => { const t = [...data.timeline]; t[idx].desc = e.target.value; setData(p => ({...p, timeline: t})); }} /></div></div>)}
+                                    <div className="flex flex-col gap-1"><button tabIndex="-1" onClick={() => toggleVisibility(`timeline.${item.id}`)} className={data.hidden[`timeline.${item.id}`] ? "text-blue-400" : "text-gray-600"}><Icon name={data.hidden[`timeline.${item.id}`] ? "eye-off" : "eye"} size={14} /></button><button tabIndex="-1" onClick={() => setData(p => ({...p, timeline: p.timeline.filter(x => x.id !== item.id)}))} className="text-red-500"><Icon name="x" size={14} /></button></div>
                                 </div>
                             ))}
-                            {data.timeline.length === 0 && <div className="text-center py-8 text-gray-600 italic text-sm">Schedule is empty. Add events or scenes above.</div>}
                         </div>
                     </div>
                 );
             };
 
             const renderCast = () => (
-                <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl animate-in fade-in">
-                    <div className="flex justify-between items-center mb-6">
-                        <SectionHeader title="Cast List" icon="user" />
-                        <button onClick={() => setData(p => ({...p, cast: [...p.cast, { id: generateId(), name: "", character: "", idNum: "", status: "", pickup: "", call: "", hmw: "", set: "", notes: "" }] }))} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add Row</button>
+                <div className="space-y-8 animate-in fade-in">
+                    <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
+                        <div className="flex justify-between items-center mb-6"><SectionHeader title="Cast" icon="user" /><button onClick={() => setData(p => ({...p, cast: [...p.cast, { id: generateId(), name: "", character: "", idNum: "", status: "", pickup: "", hmw:"", call: "", set: "" }] }))} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add Row</button></div>
+                        <div className="space-y-4">
+                            {data.cast.map((c, idx) => (
+                                <div key={c.id} className="bg-gray-800/50 p-3 rounded border border-gray-700/50">
+                                    <div className="flex justify-between mb-2">
+                                        <div className="flex gap-2"><button tabIndex="-1" onClick={() => moveItem('cast', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button><button tabIndex="-1" onClick={() => moveItem('cast', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button></div>
+                                        <div className="flex gap-2"><button tabIndex="-1" onClick={() => toggleVisibility(`cast.${c.id}`)} className={data.hidden[`cast.${c.id}`] ? "text-blue-400" : "text-gray-600"}><Icon name={data.hidden[`cast.${c.id}`] ? "eye-off" : "eye"} size={14} /></button><button tabIndex="-1" onClick={() => setData(p => ({...p, cast: p.cast.filter(x => x.id !== c.id)}))} className="text-red-500"><Icon name="x" size={14} /></button></div>
+                                    </div>
+                                    <div className="grid grid-cols-12 gap-3 text-xs">
+                                        <div className="col-span-1"><label className="text-[10px] text-gray-500 block">#</label><input className="w-full bg-transparent border-b border-gray-600" value={c.idNum} onChange={e => { const l = [...data.cast]; l[idx].idNum = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                        <div className="col-span-4"><label className="text-[10px] text-gray-500 block">Character</label><input className="w-full bg-transparent border-b border-gray-600 font-bold uppercase" value={c.character} onChange={e => { const l = [...data.cast]; l[idx].character = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                        <div className="col-span-4"><label className="text-[10px] text-gray-500 block">Talent</label><input className="w-full bg-transparent border-b border-gray-600" value={c.name} onChange={e => { const l = [...data.cast]; l[idx].name = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                        <div className="col-span-3"><label className="text-[10px] text-gray-500 block">Status</label><input className="w-full bg-transparent border-b border-gray-600" value={c.status} onChange={e => { const l = [...data.cast]; l[idx].status = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                        <div className="col-span-3"><label className="text-[10px] text-gray-500 block">Pickup</label><input type="time" className="w-full bg-transparent border-b border-gray-600" value={c.pickup} onChange={e => { const l = [...data.cast]; l[idx].pickup = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                        <div className="col-span-3"><label className="text-[10px] text-gray-500 block">H/M/W</label><input type="time" className="w-full bg-transparent border-b border-gray-600" value={c.hmw} onChange={e => { const l = [...data.cast]; l[idx].hmw = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                        <div className="col-span-3"><label className="text-[10px] text-gray-500 block">Call</label><input type="time" className="w-full bg-transparent border-b border-gray-600" value={c.call} onChange={e => { const l = [...data.cast]; l[idx].call = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                        <div className="col-span-3"><label className="text-[10px] text-gray-500 block text-blue-400">On Set</label><input type="time" className="w-full bg-transparent border-b border-gray-600 font-bold text-blue-400" value={c.set} onChange={e => { const l = [...data.cast]; l[idx].set = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                    <div className="space-y-4">
-                        {data.cast.map((c, idx) => (
-                            <div key={c.id} className="bg-gray-800/50 p-3 rounded border border-gray-700/50 hover:border-gray-600 transition-colors">
-                                <div className="flex justify-between mb-2">
-                                    <div className="flex gap-2">
-                                        <button tabIndex="-1" onClick={() => moveItem('cast', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button>
-                                        <button tabIndex="-1" onClick={() => moveItem('cast', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button tabIndex="-1" onClick={() => toggleVisibility(`cast.${c.id}`)} className={data.hidden[`cast.${c.id}`] ? "text-blue-400" : "text-gray-600 hover:text-blue-400"}><Icon name={data.hidden[`cast.${c.id}`] ? "eye-off" : "eye"} size={14} /></button>
-                                        <button tabIndex="-1" onClick={() => setData(p => ({...p, cast: p.cast.filter(x => x.id !== c.id)}))} className="text-red-900 hover:text-red-500"><Icon name="x" size={14} /></button>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-8 gap-3 text-xs">
-                                    <div className="col-span-1"><label className="text-[10px] text-gray-500 block mb-1">#</label><input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.idNum} onChange={e => { const l = [...data.cast]; l[idx].idNum = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
-                                    <div className="col-span-3"><label className="text-[10px] text-gray-500 block mb-1">Character</label><input className="w-full bg-transparent border-b border-gray-600 font-bold uppercase focus:border-blue-500 outline-none" value={c.character} onChange={e => { const l = [...data.cast]; l[idx].character = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
-                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1">Talent Name</label><input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.name} onChange={e => { const l = [...data.cast]; l[idx].name = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
-                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1">Status (W, SW, etc)</label><input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.status} onChange={e => { const l = [...data.cast]; l[idx].status = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
-                                    
-                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1">Pickup Time</label><input type="time" className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.pickup} onChange={e => { const l = [...data.cast]; l[idx].pickup = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
-                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1">Call Time</label><input type="time" className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.call} onChange={e => { const l = [...data.cast]; l[idx].call = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
-                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1">Hair/Makeup</label><input type="time" className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.hmw} onChange={e => { const l = [...data.cast]; l[idx].hmw = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
-                                    <div className="col-span-2"><label className="text-[10px] text-gray-500 block mb-1 text-blue-400">On Set</label><input type="time" className="w-full bg-transparent border-b border-gray-600 font-bold text-blue-400 focus:border-blue-500 outline-none" value={c.set} onChange={e => { const l = [...data.cast]; l[idx].set = e.target.value; setData(p => ({...p, cast: l})); }} /></div>
-                                </div>
+                    <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
+                        <div className="flex justify-between items-center mb-6"><SectionHeader title="Extras" icon="users" /><button onClick={() => setData(p => ({...p, extras: [...p.extras, { id: generateId(), count: "", desc: "", call: "", notes: "" }] }))} className="bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add</button></div>
+                        {data.extras.map((ex, idx) => (
+                            <div key={ex.id} className="flex gap-2 items-center bg-gray-800/30 p-2 rounded mb-2 border border-gray-700">
+                                <input className="w-12 bg-transparent border-b border-gray-600 text-center" placeholder="#" value={ex.count} onChange={e => {const x=[...data.extras]; x[idx].count=e.target.value; setData(p=>({...p,extras:x}))}} />
+                                <input className="flex-grow bg-transparent border-b border-gray-600 font-bold" placeholder="Description" value={ex.desc} onChange={e => {const x=[...data.extras]; x[idx].desc=e.target.value; setData(p=>({...p,extras:x}))}} />
+                                <input type="time" className="w-20 bg-transparent border-b border-gray-600" value={ex.call} onChange={e => {const x=[...data.extras]; x[idx].call=e.target.value; setData(p=>({...p,extras:x}))}} />
+                                <input className="flex-grow bg-transparent border-b border-gray-600 italic" placeholder="Notes" value={ex.notes} onChange={e => {const x=[...data.extras]; x[idx].notes=e.target.value; setData(p=>({...p,extras:x}))}} />
+                                <button onClick={() => setData(p => ({...p, extras: p.extras.filter(x => x.id !== ex.id)}))} className="text-red-500"><Icon name="x" size={14} /></button>
                             </div>
                         ))}
-                        {data.cast.length === 0 && <div className="text-center py-8 text-gray-600 italic text-sm">Cast list is empty. Add a row to start.</div>}
                     </div>
                 </div>
             );
 
             const renderCrew = () => (
                 <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl animate-in fade-in">
-                    <div className="flex justify-between items-center mb-6">
-                        <SectionHeader title="Crew List" icon="users" />
-                        <button onClick={() => setData(p => ({...p, crew: [...p.crew, { id: generateId(), dept: "", position: "", name: "", call: data.times.crewCall }] }))} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add Row</button>
-                    </div>
-                    <div className="space-y-4">
+                    <div className="flex justify-between items-center mb-6"><SectionHeader title="Crew" icon="users" /><button onClick={() => setData(p => ({...p, crew: [...p.crew, { id: generateId(), dept: "", position: "", name: "", call: p.general.crewCall, notes: "" }] }))} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add Row</button></div>
+                    <div className="space-y-2">
                         {data.crew.map((c, idx) => (
-                            <div key={c.id} className="flex gap-2 items-center bg-gray-800/50 p-2 rounded border border-gray-700/50 hover:border-gray-600 transition-colors">
+                            <div key={c.id} className="flex gap-2 items-center bg-gray-800/50 p-2 rounded border border-gray-700/50">
                                 <div className="flex flex-col gap-1">
                                     <button tabIndex="-1" onClick={() => moveItem('crew', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button>
                                     <button tabIndex="-1" onClick={() => moveItem('crew', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button>
                                 </div>
                                 <div className="flex-grow grid grid-cols-12 gap-3 text-xs items-center px-2">
-                                    <div className="col-span-3">
-                                        <label className="text-[10px] text-gray-500 block mb-1">Department</label>
-                                        <input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none uppercase font-bold text-gray-300" placeholder="e.g. CAMERA" value={c.dept} onChange={e => { const l = [...data.crew]; l[idx].dept = e.target.value; setData(p => ({...p, crew: l})); }} />
-                                    </div>
-                                    <div className="col-span-4">
-                                        <label className="text-[10px] text-gray-500 block mb-1">Role / Position</label>
-                                        <input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" placeholder="e.g. 1st AC" value={c.position} onChange={e => { const l = [...data.crew]; l[idx].position = e.target.value; setData(p => ({...p, crew: l})); }} />
-                                    </div>
-                                    <div className="col-span-3">
-                                        <label className="text-[10px] text-gray-500 block mb-1">Name</label>
-                                        <input className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" placeholder="John Doe" value={c.name} onChange={e => { const l = [...data.crew]; l[idx].name = e.target.value; setData(p => ({...p, crew: l})); }} />
-                                    </div>
-                                    <div className="col-span-2">
-                                        <label className="text-[10px] text-gray-500 block mb-1">Call Time</label>
-                                        <input type="time" className="w-full bg-transparent border-b border-gray-600 focus:border-blue-500 outline-none" value={c.call} onChange={e => { const l = [...data.crew]; l[idx].call = e.target.value; setData(p => ({...p, crew: l})); }} />
-                                    </div>
+                                    <div className="col-span-2"><input className="w-full bg-transparent border-b border-gray-600 uppercase font-bold text-gray-300" placeholder="DEPT" value={c.dept} onChange={e => { const l = [...data.crew]; l[idx].dept = e.target.value; setData(p => ({...p, crew: l})); }} /></div>
+                                    <div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-600" placeholder="Position" value={c.position} onChange={e => { const l = [...data.crew]; l[idx].position = e.target.value; setData(p => ({...p, crew: l})); }} /></div>
+                                    <div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-600" placeholder="Name" value={c.name} onChange={e => { const l = [...data.crew]; l[idx].name = e.target.value; setData(p => ({...p, crew: l})); }} /></div>
+                                    <div className="col-span-2"><input type="time" className="w-full bg-transparent border-b border-gray-600 text-center" value={c.call} onChange={e => { const l = [...data.crew]; l[idx].call = e.target.value; setData(p => ({...p, crew: l})); }} /></div>
+                                    <div className="col-span-2"><input className="w-full bg-transparent border-b border-gray-600 italic text-gray-400" placeholder="Notes" value={c.notes} onChange={e => { const l = [...data.crew]; l[idx].notes = e.target.value; setData(p => ({...p, crew: l})); }} /></div>
                                 </div>
-                                <div className="flex flex-col gap-2 px-2">
-                                    <button tabIndex="-1" onClick={() => toggleVisibility(`crew.${c.id}`)} className={data.hidden[`crew.${c.id}`] ? "text-blue-400" : "text-gray-600 hover:text-blue-400"}><Icon name={data.hidden[`crew.${c.id}`] ? "eye-off" : "eye"} size={14} /></button>
-                                    <button tabIndex="-1" onClick={() => setData(p => ({...p, crew: p.crew.filter(x => x.id !== c.id)}))} className="text-red-900 hover:text-red-500"><Icon name="x" size={14} /></button>
-                                </div>
+                                <div className="flex flex-col gap-2 px-2"><button tabIndex="-1" onClick={() => toggleVisibility(`crew.${c.id}`)} className={data.hidden[`crew.${c.id}`] ? "text-blue-400" : "text-gray-600"}><Icon name="eye" size={14} /></button><button tabIndex="-1" onClick={() => setData(p => ({...p, crew: p.crew.filter(x => x.id !== c.id)}))} className="text-red-500"><Icon name="x" size={14} /></button></div>
                             </div>
                         ))}
-                        {data.crew.length === 0 && <div className="text-center py-8 text-gray-600 italic text-sm">Crew list is empty. Add a row to start.</div>}
                     </div>
                 </div>
             );
 
-            // --- VIEW ---
+            const renderNotes = () => (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in">
+                    <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl space-y-6">
+                        <SectionHeader title="General" icon="align-left" />
+                        <ToggleTextArea label="Production Notes" path="notes.general" value={data.notes?.general} onChange={v => updateDeep('notes.general', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={6} />
+                        <ToggleTextArea label="Safety Notes" path="general.safetyNotes" value={data.general.safetyNotes} onChange={v => updateDeep('general.safetyNotes', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={3} />
+                        <div className="pt-4 border-t border-gray-800">
+                            <SectionHeader title="Footer Info" icon="info" />
+                            <ToggleInput label="Script Version" path="general.scriptVer" value={data.general.scriptVer} onChange={v => updateDeep('general.scriptVer', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
+                            <ToggleInput label="Wifi Info" path="general.wifi" value={data.general.wifi} onChange={v => updateDeep('general.wifi', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} className="mt-2" />
+                        </div>
+                        <div className="pt-4 border-t border-gray-800">
+                            <div className="flex justify-between items-center mb-2"><label className="text-[10px] font-bold text-gray-500 uppercase">Walkie Channels</label><button onClick={() => setData(p => ({...p, walkies: [...p.walkies, {id: generateId(), ch: "", desc: ""}]}))} className="text-blue-400 text-xs"><Icon name="plus" size={14} /></button></div>
+                            <div className="space-y-2">
+                                {data.walkies.map((w, idx) => (
+                                    <div key={w.id} className="flex gap-1"><input className="bg-gray-800 border border-gray-700 text-gray-400 px-2 py-1 text-xs w-12 text-center" placeholder="#" value={w.ch} onChange={e => {const n=[...data.walkies]; n[idx].ch=e.target.value; setData(p=>({...p, walkies:n}))}} /><input className="bg-gray-900 border border-gray-700 text-gray-200 text-xs px-2 py-1 flex-grow" placeholder="Channel Desc" value={w.desc} onChange={e => {const n=[...data.walkies]; n[idx].desc=e.target.value; setData(p=>({...p, walkies:n}))}} /><button onClick={() => setData(p => ({...p, walkies: p.walkies.filter(x => x.id !== w.id)}))} className="text-red-500"><Icon name="x" size={14} /></button></div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
+                        <div className="flex justify-between items-center mb-6"><SectionHeader title="Department Notes" icon="layers" /><button onClick={() => setData(p => ({...p, deptNotes: [...p.deptNotes, {id: generateId(), category: "DEPT", note: ""}]}))} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded flex items-center gap-1"><Icon name="plus" size={14} /> Add Note</button></div>
+                        <div className="space-y-4">
+                            {data.deptNotes.map((dn, idx) => (
+                                <div key={dn.id} className="bg-gray-800/50 p-2 rounded border border-gray-700/50">
+                                    <div className="flex justify-between mb-2">
+                                        <select className="bg-gray-900 text-blue-400 text-xs font-bold border border-gray-700 rounded px-2 py-1 uppercase" value={dn.category} onChange={e => {const n=[...data.deptNotes]; n[idx].category=e.target.value; setData(p=>({...p, deptNotes:n}))}}><option value="CAMERA">Camera</option><option value="SOUND">Sound</option><option value="G&E">G&E</option><option value="ART">Art</option><option value="PROPS">Props</option><option value="WARDROBE">Wardrobe</option><option value="HMU">HMU</option><option value="LOCATIONS">Locations</option><option value="TRANSPORT">Transport</option><option value="CATERING">Catering</option><option value="PRODUCTION">Production</option></select>
+                                        <div className="flex gap-2"><button tabIndex="-1" onClick={() => moveItem('deptNotes', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button><button tabIndex="-1" onClick={() => moveItem('deptNotes', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button><button tabIndex="-1" onClick={() => toggleVisibility(`deptNote.${dn.id}`)} className={data.hidden[`deptNote.${dn.id}`] ? "text-blue-400" : "text-gray-600"}><Icon name="eye" size={14} /></button><button onClick={() => setData(p => ({...p, deptNotes: p.deptNotes.filter(x => x.id !== dn.id)}))} className="text-red-500"><Icon name="x" size={14} /></button></div>
+                                    </div>
+                                    <textarea className="w-full bg-transparent border-none text-sm text-gray-300 focus:ring-0" rows={2} value={dn.note} onChange={e => {const n=[...data.deptNotes]; n[idx].note=e.target.value; setData(p=>({...p, deptNotes:n}))}} />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+
             return (
                 <div className="flex h-screen w-full bg-[#0f172a] app-ui">
-                    {/* SIDEBAR */}
                     <aside className="w-16 flex flex-col items-center py-6 bg-[#020617] border-r border-gray-800 z-50">
                         <div className="mb-8 text-blue-500"><Icon name="clapperboard" size={28} /></div>
                         <div className="flex flex-col gap-4 w-full px-2">
-                            <button onClick={() => setView('library')} className={`p-3 rounded-xl flex justify-center transition-all ${view === 'library' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-800'}`} title="Library"><Icon name="library" size={20} /></button>
-                            <button onClick={() => setView('editor')} className={`p-3 rounded-xl flex justify-center transition-all ${view === 'editor' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-800'}`} title="Editor"><Icon name="edit-3" size={20} /></button>
-                            <button onClick={() => setView('preview')} className={`p-3 rounded-xl flex justify-center transition-all ${view === 'preview' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-800'}`} title="Preview"><Icon name="eye" size={20} /></button>
+                            <button onClick={() => setView('library')} className={`p-3 rounded-xl flex justify-center transition-all ${view === 'library' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-800'}`}><Icon name="library" size={20} /></button>
+                            <button onClick={() => setView('editor')} className={`p-3 rounded-xl flex justify-center transition-all ${view === 'editor' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-800'}`}><Icon name="edit-3" size={20} /></button>
+                            <button onClick={() => setView('preview')} className={`p-3 rounded-xl flex justify-center transition-all ${view === 'preview' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-800'}`}><Icon name="eye" size={20} /></button>
                         </div>
-                        <div className="mt-auto"><button onClick={saveToLibrary} className="p-3 text-green-500 hover:bg-gray-800 rounded-xl flex justify-center" title="Save Sheet"><Icon name="save" size={20} /></button></div>
+                        <div className="mt-auto"><button onClick={saveToLibrary} className="p-3 text-green-500 hover:bg-gray-800 rounded-xl flex justify-center"><Icon name="save" size={20} /></button></div>
                     </aside>
 
-                    {/* MAIN CONTENT */}
                     <main className="flex-grow flex flex-col overflow-hidden relative">
-                        {/* Header */}
                         {view !== 'preview' && (
                             <header className="h-16 border-b border-gray-800 flex items-center justify-between px-8 bg-[#0f172a]">
                                 <div><h1 className="text-xl font-bold text-white tracking-tight">SimpleSheet</h1></div>
                                 <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs text-gray-500">Watermark:</span>
-                                        <select value={data.meta.watermark} onChange={e => updateDeep('meta.watermark', e.target.value)} className="bg-gray-800 border border-gray-700 rounded text-xs px-2 py-1 text-gray-300 focus:outline-none"><option value="NONE">None</option><option value="DRAFT">Draft</option><option value="PRELIM">Prelim</option><option value="FINAL">Final</option></select>
-                                    </div>
-                                    <button onClick={exportJSON} className="text-xs text-blue-400 hover:text-white flex gap-1 items-center bg-blue-900/30 px-3 py-1 rounded border border-blue-800"><Icon name="download" size={12} /> Export JSON</button>
-                                    <div className="h-6 w-[1px] bg-gray-700 mx-2"></div>
-                                    <input type="text" value={data.name} onChange={e => setData(p => ({...p, name: e.target.value}))} className="bg-gray-800 border border-gray-700 rounded px-3 py-1 text-sm text-gray-200 focus:border-blue-500 outline-none w-48 font-bold" placeholder="Sheet Name..." />
+                                    <div className="flex items-center gap-2 text-xs text-gray-500"><span>Format:</span><button onClick={() => updateDeep('settings.militaryTime', !data.settings.militaryTime)} className="bg-gray-800 px-2 py-1 rounded text-white w-16">{data.settings.militaryTime ? "24h" : "12h"}</button></div>
+                                    <div className="h-6 w-[1px] bg-gray-700"></div>
+                                    <div className="flex items-center gap-2"><span className="text-xs text-gray-500">WM:</span><select value={data.meta.watermark} onChange={e => updateDeep('meta.watermark', e.target.value)} className="bg-gray-800 border border-gray-700 rounded text-xs px-2 py-1 text-gray-300 focus:outline-none"><option value="NONE">None</option><option value="DRAFT">Draft</option><option value="PRELIM">Prelim</option><option value="FINAL">Final</option></select></div>
+                                    <div className="h-6 w-[1px] bg-gray-700"></div>
+                                    <button onClick={exportJSON} className="text-xs text-blue-400 hover:text-white flex gap-1 items-center bg-blue-900/30 px-3 py-1 rounded border border-blue-800"><Icon name="download" size={12} /> JSON</button>
+                                    <input type="text" value={data.name} onChange={e => setData(p => ({...p, name: e.target.value}))} className="bg-gray-800 border border-gray-700 rounded px-3 py-1 text-sm text-gray-200 focus:border-blue-500 outline-none w-48 font-bold" />
                                 </div>
                             </header>
                         )}
 
-                        {/* Library */}
                         {view === 'library' && (
                             <div className="flex-grow p-8 overflow-y-auto library-view animate-in fade-in">
                                 <div className="max-w-5xl mx-auto">
                                     <div className="flex justify-between items-end mb-8 border-b border-gray-800 pb-4">
-                                        <div><h2 className="text-3xl font-bold text-white mb-2">Sheet Library</h2><p className="text-gray-500">Local Browser Storage</p></div>
+                                        <div><h2 className="text-3xl font-bold text-white mb-2">Library</h2></div>
                                         <div className="flex gap-3"><label className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded-lg cursor-pointer flex items-center gap-2 text-sm font-medium"><Icon name="upload" size={16} /> Import<input type="file" accept=".json" className="hidden" onChange={importJSON} /></label><button onClick={createNewSheet} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-lg"><Icon name="plus" size={18} /> New</button></div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -785,16 +619,14 @@
                                             <div key={sheet.id} className="bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-blue-500/50 transition-all group relative cursor-pointer" onClick={() => loadSheet(sheet)}>
                                                 <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); deleteSheet(sheet.id); }} className="p-2 text-red-500 hover:text-red-400"><Icon name="trash" size={14} /></button></div>
                                                 <div className="flex items-center gap-3 mb-3"><div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-blue-400 font-bold border border-gray-700">CS</div><div><h3 className="font-bold text-white">{sheet.name}</h3><p className="text-xs text-gray-500">{sheet.production.title}</p></div></div>
-                                                <div className="flex justify-between text-xs text-gray-500 border-t border-gray-800 pt-3"><span>{new Date(sheet.general.date).toLocaleDateString()}</span><span>Day {sheet.general.dayCurrent}/{sheet.general.dayTotal}</span></div>
+                                                <div className="flex justify-between text-xs text-gray-500 border-t border-gray-800 pt-3"><span>{formatDate(sheet.general.date)}</span><span>Day {sheet.general.dayCurrent}/{sheet.general.dayTotal}</span></div>
                                             </div>
                                         ))}
-                                        {library.length === 0 && <div className="col-span-full py-20 text-center text-gray-600 border-2 border-dashed border-gray-800 rounded-xl"><Icon name="ghost" size={48} className="mx-auto mb-4 opacity-50" /><p>Library Empty</p></div>}
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* Editor */}
                         {view === 'editor' && (
                             <div className="flex-grow overflow-hidden flex flex-col editor-view">
                                 <div className="flex overflow-x-auto gap-1 px-4 pt-2 border-b border-gray-800 bg-[#0f172a] shrink-0 tabs">
@@ -806,208 +638,253 @@
                                     <div className="max-w-4xl mx-auto">
                                         {activeTab === 'general' && renderGeneral()}
                                         {activeTab === 'locations' && renderLocations()}
-                                        {activeTab === 'timeline' && renderTimeline()}
+                                        {activeTab === 'timeline' && renderSchedule()}
                                         {activeTab === 'cast' && renderCast()}
                                         {activeTab === 'crew' && renderCrew()}
-                                        {activeTab === 'notes' && (
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
-                                                <div className="space-y-4">
-                                                    <SectionHeader title="General Notes" icon="align-left" />
-                                                    <ToggleTextArea label="Production Notes" path="notes.general" value={data.notes.general} onChange={v => updateDeep('notes.general', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={6} />
-                                                    <ToggleTextArea label="Safety Notes" path="general.safetyNotes" value={data.general.safetyNotes} onChange={v => updateDeep('general.safetyNotes', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={3} />
-                                                    <ToggleInput label="Wifi Info" path="general.wifi" value={data.general.wifi} onChange={v => updateDeep('general.wifi', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} />
-                                                </div>
-                                                <div className="space-y-4">
-                                                    <SectionHeader title="Department Notes" icon="layers" />
-                                                    <ToggleTextArea label="Camera/General" path="notes.department" value={data.notes.department} onChange={v => updateDeep('notes.department', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={3} />
-                                                    <ToggleTextArea label="Art" path="notes.art" value={data.notes.art} onChange={v => updateDeep('notes.art', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={2} />
-                                                    <ToggleTextArea label="Props" path="notes.props" value={data.notes.props} onChange={v => updateDeep('notes.props', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={2} />
-                                                    <ToggleTextArea label="Wardrobe" path="notes.wardrobe" value={data.notes.wardrobe} onChange={v => updateDeep('notes.wardrobe', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={2} />
-                                                    <ToggleTextArea label="Vehicles" path="notes.vehicles" value={data.notes.vehicles} onChange={v => updateDeep('notes.vehicles', v)} hiddenMap={data.hidden} onToggle={toggleVisibility} rows={2} />
-                                                    <div className="border-t border-gray-800 pt-2">
-                                                        <div className="flex justify-between items-center mb-2"><label className="text-[10px] font-bold text-gray-500 uppercase">Walkie Channels</label><button tabIndex="-1" onClick={() => toggleVisibility('notes.walkies')} className={data.hidden['notes.walkies'] ? "text-gray-600" : "text-blue-400"}><Icon name={data.hidden['notes.walkies'] ? "eye-off" : "eye"} size={12} /></button></div>
-                                                        <div className={`space-y-2 ${data.hidden['notes.walkies'] ? 'opacity-50' : ''}`}>{data.notes.walkies.map((w, i) => (<div key={i} className="flex gap-0"><div className="bg-gray-800 border border-gray-700 text-gray-400 px-2 py-1 text-xs font-mono border-r-0 rounded-l w-8 flex items-center justify-center">{w.ch}</div><input className="bg-gray-900 border border-gray-700 text-gray-200 text-xs px-2 py-1 w-full rounded-r outline-none focus:border-blue-500" value={w.use} onChange={e => { const nw = [...data.notes.walkies]; nw[i].use = e.target.value; setData(p => ({...p, notes: {...p.notes, walkies: nw}})); }} /></div>))}</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
+                                        {activeTab === 'notes' && renderNotes()}
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        {/* Preview */}
-                        <div className={`${view === 'preview' ? 'flex' : 'hidden'} flex-col items-center justify-start bg-[#525659] h-full overflow-auto relative py-12 preview-view`}>
-                            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 border border-gray-700 floating-controls">
-                                <div className="flex items-center gap-2"><button onClick={() => setScale(Math.max(0.4, scale - 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="minus" size={16} /></button><span className="text-xs font-mono w-12 text-center">{Math.round(scale * 100)}%</span><button onClick={() => setScale(Math.min(1.5, scale + 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="plus" size={16} /></button></div><div className="h-4 w-[1px] bg-gray-700"></div><button onClick={() => window.print()} className="flex items-center gap-2 font-bold text-sm text-green-400 hover:text-green-300"><Icon name="printer" size={18} /> PRINT PDF</button>
-                            </div>
+                        {view === 'preview' && (
+                            <div className="flex-col items-center justify-start bg-[#525659] h-full overflow-auto relative py-8 preview-view flex">
+                                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 border border-gray-700 floating-controls">
+                                    <div className="flex items-center gap-2"><button onClick={() => setScale(Math.max(0.4, scale - 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="minus" size={16} /></button><span className="text-xs font-mono w-12 text-center">{Math.round(scale * 100)}%</span><button onClick={() => setScale(Math.min(1.5, scale + 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="plus" size={16} /></button></div><div className="h-4 w-[1px] bg-gray-700"></div><button onClick={() => window.print()} className="flex items-center gap-2 font-bold text-sm text-green-400 hover:text-green-300"><Icon name="printer" size={18} /> PRINT PDF</button>
+                                </div>
 
-                            <div className="print-sheet bg-white text-black shadow-2xl origin-top preview-wrapper relative overflow-hidden" style={{ width: '210mm', height: '297mm', transform: view === 'preview' ? `scale(${scale})` : 'none', marginBottom: '2rem' }}>
-                                {data.meta.watermark !== 'NONE' && <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-0 opacity-[0.08]"><h1 className="text-[150px] font-black -rotate-45 whitespace-nowrap border-4 border-black px-12 rounded-xl">{data.meta.watermark}</h1></div>}
-                                <div className="sheet-content relative z-10 h-full flex flex-col justify-between font-sans text-[9px] leading-tight p-[10mm]">
-                                    
-                                    <div className="flex-grow flex flex-col">
-                                        {/* HEADER */}
-                                        <div className="flex border-b-2 border-black pb-2 mb-2">
-                                            <div className="w-1/3 pr-4 border-r border-black flex flex-col justify-between">
-                                                {!data.hidden['production.company'] && <div className="font-header font-bold text-xl uppercase tracking-tighter leading-none mb-2">{data.production.company}</div>}
-                                                <div className="space-y-0.5 mt-auto">
-                                                    {!data.hidden['production.producers'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">PROD</span> <span className="font-bold">{data.production.producers}</span></div>}
-                                                    {!data.hidden['production.director'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">DIR</span> <span className="font-bold">{data.production.director}</span></div>}
-                                                    {!data.hidden['production.ad'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">AD</span> <span className="font-bold">{data.production.ad}</span></div>}
-                                                    {!data.hidden['general.scriptVer'] && <div className="flex justify-between border-b border-gray-300 text-red-700"><span className="text-gray-500">SCRIPT</span> <span className="font-bold">{data.general.scriptVer}</span></div>}
-                                                </div>
-                                            </div>
-                                            <div className="w-1/3 text-center px-2 flex flex-col items-center justify-center">
-                                                {!data.hidden['production.title'] && <h1 className="font-header text-3xl font-black uppercase tracking-widest leading-none mb-1">{data.production.title}</h1>}
-                                                <div className="mt-2 w-full grid grid-cols-2 gap-1 text-[8px]">
-                                                    <div className="border border-black p-0.5 bg-black text-white font-bold">CALL: {formatTime(data.times.crewCall, data.settings.militaryTime)}</div>
-                                                    <div className="border border-black p-0.5 font-bold">SHOOT: {formatTime(data.times.shootingCall, data.settings.militaryTime)}</div>
-                                                    {!data.hidden['times.breakfast'] && <div className="border border-gray-400 p-0.5 text-gray-600 bg-gray-100">BFAST: {formatTime(data.times.breakfast, data.settings.militaryTime)}</div>}
-                                                    {!data.hidden['times.lunch'] && <div className="border border-gray-400 p-0.5 text-gray-600 bg-gray-100">LUNCH: {formatTime(data.times.lunch, data.settings.militaryTime)}</div>}
-                                                </div>
-                                            </div>
-                                            <div className="w-1/3 pl-4 border-l border-black text-right flex flex-col justify-between">
-                                                {!data.hidden['general.date'] && <div className="font-header text-2xl font-bold uppercase">{new Date(data.general.date).toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}).toUpperCase()}</div>}
-                                                {!data.hidden['general.dayCurrent'] && <div className="bg-gray-200 inline-block px-2 py-0.5 font-bold self-end border border-black mt-1">DAY {data.general.dayCurrent} OF {data.general.dayTotal}</div>}
-                                                <div className="text-[8px] mt-1 space-y-0.5">
-                                                    {!data.hidden['general.weather'] && <div>{data.general.weather}</div>}
-                                                    {(!data.hidden['general.sunrise'] || !data.hidden['general.sunset']) && <div>SR: {formatTime(data.general.sunrise, data.settings.militaryTime)} | SS: {formatTime(data.general.sunset, data.settings.militaryTime)}</div>}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* TOP ROW: LOCATIONS & TIMELINE */}
-                                        <div className="flex gap-2 border-b-2 border-black pb-2 mb-2 flex-grow h-[150mm]">
-                                            <div className="w-[35%] flex flex-col gap-2">
-                                                {/* LOCATIONS */}
-                                                <div className="border-2 border-black flex-grow">
-                                                    <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Locations</div>
-                                                    <div className="p-1 space-y-2">
-                                                        {!data.hidden['general.parking'] && <div className="text-[8px] italic border-b border-gray-300 pb-1 mb-1">🅿️ {data.general.parking}</div>}
-                                                        {data.locations.map(loc => {
-                                                            if (data.hidden[`locations.${loc.id}`]) return null;
-                                                            return (
-                                                                <div key={loc.id} className="relative">
-                                                                    {loc.isMain && <span className="absolute -left-1 top-0 text-black text-[8px]">★</span>}
-                                                                    <div className="font-bold uppercase text-[9px] underline decoration-gray-400 pl-2">{loc.type}: {loc.name}</div>
-                                                                    <div className="pl-2 leading-tight">{loc.address}</div>
-                                                                    {loc.note && <div className="pl-2 italic text-gray-500">{loc.note}</div>}
-                                                                </div>
-                                                            );
-                                                        })}
+                                <div className="print-sheet bg-white text-black shadow-2xl origin-top preview-wrapper relative overflow-hidden" style={{ width: '210mm', minHeight: '297mm', transform: view === 'preview' ? `scale(${scale})` : 'none', marginBottom: '2rem' }}>
+                                    {data.meta.watermark !== 'NONE' && <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50 opacity-[0.08]"><h1 className="text-[150px] font-black -rotate-45 whitespace-nowrap border-4 border-black px-12 rounded-xl">{data.meta.watermark}</h1></div>}
+                                    <div className="sheet-content relative z-10 h-full flex flex-col justify-between font-sans text-[9px] leading-tight p-[10mm]">
+                                        
+                                        <div className="flex-grow flex flex-col">
+                                            {/* HEADER */}
+                                            <div className="flex border-b-2 border-black pb-2 mb-2">
+                                                <div className="w-[30%] pr-4 border-r border-black flex flex-col justify-start">
+                                                    {!data.hidden['production.company'] && <div className="font-header font-bold text-lg uppercase tracking-tighter leading-none mb-1">{data.production.company}</div>}
+                                                    {!data.hidden['production.studioAddress'] && <div className="text-[8px] mb-2">{data.production.studioAddress}</div>}
+                                                    <div className="space-y-0.5">
+                                                        {!data.hidden['production.producers'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">PROD</span> <span className="font-bold truncate">{data.production.producers}</span></div>}
+                                                        {!data.hidden['production.director'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">DIR</span> <span className="font-bold truncate">{data.production.director}</span></div>}
+                                                        {!data.hidden['production.ad'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">AD</span> <span className="font-bold truncate">{data.production.ad}</span></div>}
+                                                        <div className="pt-1 text-[8px] text-gray-600">
+                                                            {!data.hidden['production.officePhone'] && <div><span className="font-bold">P:</span> {data.production.officePhone}</div>}
+                                                            {!data.hidden['production.officeEmail'] && <div><span className="font-bold">E:</span> {data.production.officeEmail}</div>}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                {/* EMERGENCY */}
-                                                <div className="border border-red-800 p-1 bg-red-50 text-[8px]">
-                                                    <div className="font-bold text-red-800 border-b border-red-200 mb-1 flex items-center justify-between">
-                                                        <span>EMERGENCY</span> <span>🚨</span>
+                                                <div className="w-[40%] text-center px-2 flex flex-col items-center justify-center">
+                                                    {!data.hidden['production.title'] && <h1 className="font-header text-4xl font-black uppercase tracking-widest leading-none mb-2">{data.production.title}</h1>}
+                                                    {!data.hidden['general.crewCall'] && <div className="bg-black text-white font-bold text-lg px-6 py-1 mt-2">GENERAL CALL - {formatTime(data.general.crewCall, data.settings.militaryTime)}</div>}
+                                                </div>
+                                                <div className="w-[30%] pl-4 border-l border-black text-right flex flex-col justify-between">
+                                                    <div className="text-right mb-1">
+                                                        {!data.hidden['general.date'] && <div className="font-header text-xl font-bold uppercase">{formatDate(data.general.date)}</div>}
+                                                        {!data.hidden['general.dayCurrent'] && <div className="bg-gray-200 inline-block px-2 py-0.5 font-bold border border-black mt-1">DAY {data.general.dayCurrent} OF {data.general.dayTotal}</div>}
                                                     </div>
-                                                    {!data.hidden['general.nearestHospital'] && <div className="mb-0.5"><span className="font-bold text-red-900">HOSP:</span> {data.general.nearestHospital}</div>}
-                                                    {!data.hidden['general.police'] && <div className="mb-0.5"><span className="font-bold text-red-900">POLICE:</span> {data.general.police}</div>}
-                                                    {!data.hidden['general.fire'] && <div><span className="font-bold text-red-900">FIRE:</span> {data.general.fire}</div>}
+                                                    
+                                                    {/* Weather Box */}
+                                                    <div className="bg-black text-white p-2 mb-1 flex justify-between items-center text-[9px]">
+                                                        <div className="text-left leading-tight">
+                                                            <div className="font-bold">{data.general.weatherHigh}° / {data.general.weatherLow}°</div>
+                                                            <div>{data.general.weatherCond}</div>
+                                                            <div>{data.general.weatherPrecip} Rain</div>
+                                                        </div>
+                                                        <div className="text-right leading-tight">
+                                                            <div>SR: {formatTime(data.general.sunrise, data.settings.militaryTime)}</div>
+                                                            <div>SS: {formatTime(data.general.sunset, data.settings.militaryTime)}</div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Key Timings List */}
+                                                    <div className="border-t-2 border-black pt-1">
+                                                        <div className="font-bold underline mb-0.5 text-[9px]">KEY TIMINGS</div>
+                                                        {data.keyTimings.map(kt => (
+                                                            <div key={kt.id} className="flex justify-between font-bold border-b border-gray-300 text-[9px] py-0.5">
+                                                                <span className="text-gray-600 uppercase">{kt.label}</span>
+                                                                <span>{formatTime(kt.time, data.settings.militaryTime)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
 
-                                            {/* TIMELINE (Schedule + Shot List) */}
-                                            <div className="w-[65%] border-2 border-black">
-                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Schedule</div>
-                                                <table className="w-full text-left border-collapse">
-                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b border-black">
-                                                        <tr>
-                                                            <th className="px-1 w-10 text-right border-r border-gray-400">Time</th>
-                                                            <th className="px-1 w-6 text-center border-r border-gray-400">#</th>
-                                                            <th className="px-1 w-6 text-center border-r border-gray-400">I/E</th>
-                                                            <th className="px-1 border-r border-gray-400">Set / Description</th>
-                                                            <th className="px-1 w-6 text-center border-r border-gray-400">D/N</th>
-                                                            <th className="px-1 w-8 text-center border-r border-gray-400">Pgs</th>
-                                                            <th className="px-1 w-8 text-center">Cast</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-gray-300">
-                                                        {data.timeline.map(item => {
-                                                            if (data.hidden[`timeline.${item.id}`]) return null;
-                                                            if (item.type === 'event') {
+                                            {/* MIDDLE SECTION: LOCATIONS (Left) & SCHEDULE (Right) */}
+                                            <div className="flex gap-4 border-b-2 border-black pb-2 mb-2 flex-grow h-auto">
+                                                
+                                                {/* LEFT: LOCATIONS */}
+                                                <div className="w-[30%] flex flex-col gap-2">
+                                                    <div className="border-2 border-black flex-grow flex flex-col">
+                                                        <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Locations</div>
+                                                        <div className="p-1 space-y-3 flex-grow">
+                                                            {data.locations.map(loc => {
+                                                                if (data.hidden[`locations.${loc.id}`]) return null;
                                                                 return (
-                                                                    <tr key={item.id} className="bg-gray-100 font-bold border-t-2 border-gray-400 text-[9px]">
-                                                                        <td className="px-1 text-right border-r border-gray-400 bg-gray-200">{formatTime(item.time, data.settings.militaryTime)}</td>
-                                                                        <td colSpan="6" className="px-2 uppercase">{item.desc}</td>
-                                                                    </tr>
+                                                                    <div key={loc.id} className="relative">
+                                                                        {loc.isMain && <span className="absolute -left-2 top-0 text-black text-[10px]">★</span>}
+                                                                        <div className="font-bold uppercase text-[9px] underline decoration-gray-400">{loc.type}: {loc.name}</div>
+                                                                        <div className="leading-tight mb-1">{loc.address}</div>
+                                                                        {loc.desc && <div className="italic text-gray-500 mb-1">{loc.desc}</div>}
+                                                                        
+                                                                        {/* Sub-Boxes for Details */}
+                                                                        {loc.category === 'Set' && loc.hospital && (
+                                                                            <div className="border border-red-600 p-1 mt-1 text-[8px] text-red-600 font-bold bg-red-50">
+                                                                                HOSPITAL: {loc.hospital}
+                                                                            </div>
+                                                                        )}
+                                                                        {loc.category === 'Parking' && loc.parkingInstr && (
+                                                                            <div className="border border-black p-1 mt-1 text-[8px] bg-gray-100">
+                                                                                PARKING: {loc.parkingInstr}
+                                                                            </div>
+                                                                        )}
+                                                                        {loc.category === 'Basecamp' && loc.amenities.length > 0 && (
+                                                                            <div className="border border-black p-1 mt-1 text-[8px] bg-gray-100">
+                                                                                INCLUDES: {loc.amenities.join(', ')}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                                 );
-                                                            } else {
-                                                                return (
-                                                                    <tr key={item.id} className="text-[9px]">
-                                                                        <td className="px-1 text-right border-r border-gray-400 text-gray-300">--:--</td>
-                                                                        <td className="px-1 text-center font-bold border-r border-gray-400">{item.number}</td>
-                                                                        <td className="px-1 text-center border-r border-gray-400">{item.intExt}</td>
-                                                                        <td className="px-1 border-r border-gray-400">
-                                                                            <span className="font-bold uppercase">{item.set}</span>
-                                                                            <span className="block italic text-gray-600 leading-none pb-0.5">{item.desc}</span>
-                                                                        </td>
-                                                                        <td className="px-1 text-center border-r border-gray-400">{item.dayNight}</td>
-                                                                        <td className="px-1 text-center border-r border-gray-400">{item.pages}</td>
-                                                                        <td className="px-1 text-center font-bold">{item.cast}</td>
-                                                                    </tr>
-                                                                );
-                                                            }
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                </div>
 
-                                        {/* CAST & CREW */}
-                                        <div className="flex gap-2 mb-2 h-auto">
-                                            <div className="w-1/2 border-2 border-black">
-                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Cast</div>
-                                                <table className="w-full text-center border-collapse">
-                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b border-black">
-                                                        <tr>
-                                                            <th className="border-r border-gray-400 w-4">#</th>
-                                                            <th className="border-r border-gray-400 text-left px-1">Character</th>
-                                                            <th className="border-r border-gray-400 text-left px-1">Talent</th>
-                                                            <th className="border-r border-gray-400 w-6">PU</th>
-                                                            <th className="border-r border-gray-400 w-6">Call</th>
-                                                            <th className="w-6 bg-gray-300">Set</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-gray-300">
-                                                        {data.cast.map(c => {
-                                                            if(data.hidden[`cast.${c.id}`]) return null;
-                                                            return (
-                                                                <tr key={c.id}>
-                                                                    <td className="border-r border-gray-300 font-bold">{c.idNum}</td>
-                                                                    <td className="border-r border-gray-300 text-left px-1 font-bold uppercase">{c.character}</td>
-                                                                    <td className="border-r border-gray-300 text-left px-1 truncate max-w-[60px]">{c.name}</td>
-                                                                    <td className="border-r border-gray-300">{formatTime(c.pickup, data.settings.militaryTime)}</td>
-                                                                    <td className="border-r border-gray-300">{formatTime(c.call, data.settings.militaryTime)}</td>
-                                                                    <td className="font-bold bg-gray-100">{formatTime(c.set, data.settings.militaryTime)}</td>
+                                                {/* RIGHT: SCHEDULE */}
+                                                <div className="w-[70%] border-2 border-black flex flex-col">
+                                                    <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Schedule</div>
+                                                    <table className="w-full text-left border-collapse">
+                                                        <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black">
+                                                            <tr>
+                                                                <th className="px-1 w-12 text-right border-r border-black">Time</th>
+                                                                <th className="px-1 w-6 text-center border-r border-black">#</th>
+                                                                <th className="px-1 w-6 text-center border-r border-black">I/E</th>
+                                                                <th className="px-1 border-r border-black">Set / Description</th>
+                                                                <th className="px-1 w-6 text-center border-r border-black">D/N</th>
+                                                                <th className="px-1 w-8 text-center border-r border-black">Pgs</th>
+                                                                <th className="px-1 w-8 text-center">Cast</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-400">
+                                                            {data.timeline.map(item => {
+                                                                if (data.hidden[`timeline.${item.id}`]) return null;
+                                                                if (item.type === 'event') {
+                                                                    return (
+                                                                        <tr key={item.id} className="bg-gray-100 font-bold border-t border-black border-b border-black text-[9px]">
+                                                                            <td className="px-1 text-right border-r border-black bg-gray-300">{formatTime(item.time, data.settings.militaryTime)}</td>
+                                                                            <td colSpan="6" className="px-2 uppercase">
+                                                                                <span className="mr-2">{item.title}</span>
+                                                                                {item.desc && <span className="font-normal italic text-gray-600 normal-case">- {item.desc}</span>}
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                } else {
+                                                                    return (
+                                                                        <tr key={item.id} className="text-[9px]">
+                                                                            <td className="px-1 text-right border-r border-black font-bold">{formatTime(item.time, data.settings.militaryTime)}</td>
+                                                                            <td className="px-1 text-center font-bold border-r border-black">{item.number}</td>
+                                                                            <td className="px-1 text-center border-r border-black">{item.intExt}</td>
+                                                                            <td className="px-1 border-r border-black">
+                                                                                <span className="font-bold uppercase">{item.set}</span>
+                                                                                <span className="block italic text-gray-600 leading-none pb-0.5">{item.desc}</span>
+                                                                            </td>
+                                                                            <td className="px-1 text-center border-r border-black">{item.dayNight}</td>
+                                                                            <td className="px-1 text-center border-r border-black">{item.pages}</td>
+                                                                            <td className="px-1 text-center font-bold">{item.cast}</td>
+                                                                        </tr>
+                                                                    );
+                                                                }
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            {/* LOWER SECTION: CAST & EXTRAS SIDE-BY-SIDE */}
+                                            <div className="flex gap-2 mb-2 h-auto">
+                                                <div className="w-[70%] border-2 border-black">
+                                                    <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Cast</div>
+                                                    <table className="w-full text-center border-collapse">
+                                                        <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black">
+                                                            <tr>
+                                                                <th className="border-r border-black w-6">#</th>
+                                                                <th className="border-r border-black text-left px-1">Character</th>
+                                                                <th className="border-r border-black text-left px-1">Talent</th>
+                                                                <th className="border-r border-black w-8">Stat</th>
+                                                                <th className="border-r border-black w-10">Pickup</th>
+                                                                <th className="border-r border-black w-10">H/M/W</th>
+                                                                <th className="border-r border-black w-10">Call</th>
+                                                                <th className="w-10 bg-gray-300">Set</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-400">
+                                                            {data.cast.map(c => {
+                                                                if(data.hidden[`cast.${c.id}`]) return null;
+                                                                return (
+                                                                    <tr key={c.id} className="text-[9px]">
+                                                                        <td className="border-r border-black font-bold">{c.idNum}</td>
+                                                                        <td className="border-r border-black text-left px-1 font-bold uppercase">{c.character}</td>
+                                                                        <td className="border-r border-black text-left px-1 truncate max-w-[100px]">{c.name}</td>
+                                                                        <td className="border-r border-black">{c.status}</td>
+                                                                        <td className="border-r border-black">{formatTime(c.pickup, data.settings.militaryTime)}</td>
+                                                                        <td className="border-r border-black">{formatTime(c.hmw, data.settings.militaryTime)}</td>
+                                                                        <td className="border-r border-black">{formatTime(c.call, data.settings.militaryTime)}</td>
+                                                                        <td className="font-bold bg-gray-100">{formatTime(c.set, data.settings.militaryTime)}</td>
+                                                                    </tr>
+                                                                )
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                
+                                                <div className="w-[30%] border-2 border-black">
+                                                    <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Extras</div>
+                                                    <table className="w-full text-center border-collapse">
+                                                        <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black">
+                                                            <tr>
+                                                                <th className="border-r border-black w-8">#</th>
+                                                                <th className="border-r border-black text-left px-1">Description</th>
+                                                                <th className="w-12">Call</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-400">
+                                                            {data.extras.map(ex => (
+                                                                <tr key={ex.id} className="text-[9px]">
+                                                                    <td className="border-r border-black font-bold">{ex.count}</td>
+                                                                    <td className="border-r border-black text-left px-1 truncate max-w-[100px]">
+                                                                        {ex.desc}
+                                                                        {ex.notes && <span className="block italic text-[7px] text-gray-500">{ex.notes}</span>}
+                                                                    </td>
+                                                                    <td>{formatTime(ex.call, data.settings.militaryTime)}</td>
                                                                 </tr>
-                                                            )
-                                                        })}
-                                                    </tbody>
-                                                </table>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
                                             </div>
-                                            <div className="w-1/2 border-2 border-black">
-                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[8px] tracking-widest uppercase">Crew</div>
+
+                                            {/* CREW - SINGLE FULL WIDTH LIST */}
+                                            <div className="mb-2 border-2 border-black w-full">
+                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Crew</div>
                                                 <table className="w-full text-left border-collapse">
-                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b border-black">
+                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black">
                                                         <tr>
-                                                            <th className="border-r border-gray-400 px-1 w-1/4">Dept</th>
-                                                            <th className="border-r border-gray-400 px-1 w-1/3">Role</th>
-                                                            <th className="border-r border-gray-400 px-1">Name</th>
-                                                            <th className="w-8 text-center bg-gray-300">Call</th>
+                                                            <th className="border-r border-black px-1 w-[20%]">Dept</th>
+                                                            <th className="border-r border-black px-1 w-[25%]">Role</th>
+                                                            <th className="border-r border-black px-1 w-[25%]">Name</th>
+                                                            <th className="w-12 text-center bg-gray-300 border-r border-black">Call</th>
+                                                            <th className="px-1 text-center">Notes</th>
                                                         </tr>
                                                     </thead>
-                                                    <tbody className="divide-y divide-gray-300">
+                                                    <tbody className="divide-y divide-gray-400">
                                                         {data.crew.map(c => {
                                                             if(data.hidden[`crew.${c.id}`]) return null;
                                                             return (
-                                                                <tr key={c.id}>
-                                                                    <td className="border-r border-gray-300 px-1 font-bold uppercase text-[8px]">{c.dept}</td>
-                                                                    <td className="border-r border-gray-300 px-1">{c.position}</td>
-                                                                    <td className="border-r border-gray-300 px-1 truncate">{c.name}</td>
-                                                                    <td className="text-center font-bold bg-gray-100">{formatTime(c.call, data.settings.militaryTime)}</td>
+                                                                <tr key={c.id} className="text-[9px]">
+                                                                    <td className="border-r border-black px-1 font-bold uppercase">{c.dept}</td>
+                                                                    <td className="border-r border-black px-1">{c.position}</td>
+                                                                    <td className="border-r border-black px-1 truncate">{c.name}</td>
+                                                                    <td className="text-center font-bold bg-gray-100 border-r border-black">{formatTime(c.call, data.settings.militaryTime)}</td>
+                                                                    <td className="px-1 italic text-gray-500">{c.notes}</td>
                                                                 </tr>
                                                             )
                                                         })}
@@ -1015,44 +892,55 @@
                                                 </table>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    {/* FOOTER - NOTES - FORCED TO BOTTOM */}
-                                    <div className="mt-auto border-t-2 border-black pt-1">
-                                        <div className="grid grid-cols-2 gap-2 text-[9px] mb-2">
-                                            <div className="border border-black p-1 bg-gray-50">
-                                                <div className="font-bold underline mb-1">GENERAL NOTES:</div>
-                                                {!data.hidden['notes.general'] && <div className="whitespace-pre-wrap leading-tight">{data.notes.general}</div>}
-                                                {!data.hidden['general.safetyNotes'] && <div className="mt-1 font-bold text-red-600">{data.general.safetyNotes}</div>}
-                                                {!data.hidden['general.wifi'] && <div className="mt-1 text-gray-600 font-mono text-[8px]">WIFI: {data.general.wifi}</div>}
-                                            </div>
-                                            <div className="border border-black p-1 grid grid-cols-2 gap-2">
-                                                <div>
-                                                    {!data.hidden['notes.department'] && <div className="mb-1"><span className="font-bold underline">CAM/GEN:</span> {data.notes.department}</div>}
-                                                    {!data.hidden['notes.props'] && <div className="mb-1"><span className="font-bold underline">PROPS:</span> {data.notes.props}</div>}
-                                                    {!data.hidden['notes.wardrobe'] && <div className="mb-1"><span className="font-bold underline">WARD:</span> {data.notes.wardrobe}</div>}
+                                        {/* FOOTER */}
+                                        <div className="mt-auto pt-1 w-full">
+                                            <div className="flex gap-2 text-[9px] mb-2 h-auto">
+                                                {/* General Notes (Left - 30%) */}
+                                                <div className="w-[30%] border border-black p-1 bg-gray-50 h-full flex flex-col">
+                                                    <div className="font-bold underline mb-1">GENERAL NOTES:</div>
+                                                    <div className="flex-grow whitespace-pre-wrap leading-tight">{!data.hidden['notes.general'] && (data.notes?.general || "")}</div>
+                                                    
+                                                    {/* Safety at bottom of general notes box */}
+                                                    <div className="mt-2 border-t border-black pt-1">
+                                                        {!data.hidden['general.safetyNotes'] && <div className="font-bold text-red-600">SAFETY: {data.general.safetyNotes}</div>}
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    {!data.hidden['notes.art'] && <div className="mb-1"><span className="font-bold underline">ART:</span> {data.notes.art}</div>}
-                                                    {!data.hidden['notes.vehicles'] && <div className="mb-1"><span className="font-bold underline">VEHIC:</span> {data.notes.vehicles}</div>}
+                                                
+                                                {/* Dept Notes (Right - 70%) */}
+                                                <div className="w-[70%] border border-black p-1 h-full">
+                                                    <div className="font-bold underline mb-1 uppercase text-[9px]">Department Notes</div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {data.deptNotes.map(dn => {
+                                                            if(data.hidden[`deptNote.${dn.id}`]) return null;
+                                                            return (
+                                                                <div key={dn.id} className="border border-gray-400 p-1 text-[8px] break-inside-avoid">
+                                                                    <span className="font-bold underline uppercase">{dn.category}:</span> {dn.note}
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Bottom Bar */}
+                                            <div className="bg-black text-white p-1 text-[8px] flex justify-between items-center h-[24px]">
+                                                <div className="flex gap-2 font-mono items-center w-1/3">
+                                                    {!data.hidden['notes.walkies'] && data.walkies.map(w => <span key={w.ch} className="bg-gray-800 px-1 border border-gray-500 rounded-sm">CH{w.ch}: {w.desc}</span>)}
+                                                </div>
+                                                <div className="w-1/3 text-center">
+                                                    {!data.hidden['general.scriptVer'] && <div className="border border-white px-2 inline-block font-bold">SCRIPT VER: {data.general.scriptVer}</div>}
+                                                </div>
+                                                <div className="w-1/3 text-right font-mono">
+                                                    {!data.hidden['general.wifi'] && <div>WIFI: {data.general.wifi}</div>}
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="bg-black text-white p-1 text-[8px] flex justify-between items-center h-[16px]">
-                                            <div className="flex gap-2 font-mono items-center">
-                                                {!data.hidden['notes.walkies'] && data.notes.walkies.map(w => <span key={w.ch} className="bg-gray-800 px-1 border border-gray-600 rounded-sm">CH{w.ch}:{w.use}</span>)}
-                                            </div>
-                                            <div>
-                                                {!data.hidden['production.officeEmail'] && data.production.officeEmail} 
-                                                {!data.hidden['production.officeEmail'] && !data.hidden['production.officePhone'] && ' | '} 
-                                                {!data.hidden['production.officePhone'] && data.production.officePhone}
-                                            </div>
-                                        </div>
-                                    </div>
 
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </main>
                 </div>
             );
