@@ -23,8 +23,8 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Oswald:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
         :root {
-            --sheet-width: 210mm;
-            --sheet-height: 297mm;
+            --sheet-width: 8.5in;
+            --sheet-height: 11in;
         }
 
         body {
@@ -51,8 +51,8 @@
         /* --- PRINT STYLES --- */
         @media print {
             @page {
-                size: A4 portrait;
-                margin: 0;
+                size: letter portrait;
+                margin: 0; /* We handle margins in .sheet-content to avoid browser defaults */
             }
 
             body, html {
@@ -61,7 +61,7 @@
                 height: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                overflow: visible !important;
+                overflow: hidden !important; /* Prevents scrollbars in print preview */
             }
 
             .app-ui > aside, .app-ui > main > header, .tabs, .library-view, .editor-view, .floating-controls, .no-print {
@@ -87,9 +87,8 @@
                 left: auto !important;
                 top: auto !important;
                 transform: none !important;
-                width: 210mm !important;
-                min-height: 297mm !important;
-                height: 297mm !important; /* Force exact A4 height */
+                width: 8.5in !important;
+                height: 11in !important; 
                 box-shadow: none !important;
                 border: none !important;
                 padding: 0 !important;
@@ -99,7 +98,8 @@
                 display: flex !important;
                 flex-direction: column !important;
                 height: 100% !important;
-                padding: 5mm !important;
+                /* Increased bottom padding to 0.5in to prevent footer cutoff */
+                padding: 0.25in 0.25in 0.5in 0.25in !important; 
             }
 
             /* FORCE COLORS & BOLDNESS */
@@ -114,14 +114,36 @@
             .bg-gray-800 { background-color: #222 !important; color: white !important; }
             .bg-gray-200 { background-color: #e5e5e5 !important; }
             .bg-gray-100 { background-color: #f3f4f6 !important; }
-            
             .text-red-600 { color: #dc2626 !important; }
-            .border-red-600 { border-color: #dc2626 !important; }
             
-            /* Thicker borders for print legibility */
-            .border-2 { border-width: 2px !important; }
-            .border-b-2 { border-bottom-width: 2px !important; }
+            /* --- STRICT BORDER CONTROL --- */
             
+            /* THICK BORDERS (2pt is clearly thicker than 0.5pt) */
+            .print-thick-border { border: 2pt solid black !important; }
+            .print-thick-border-b { border-bottom: 2pt solid black !important; }
+            .print-thick-border-t { border-top: 2pt solid black !important; }
+            .print-thick-border-l { border-left: 2pt solid black !important; }
+            .print-thick-border-r { border-right: 2pt solid black !important; }
+
+            /* THIN BORDERS (0.5pt is standard hairline for print) */
+            .print-thin-border { border: 0.5pt solid black !important; }
+            .print-thin-border-b { border-bottom: 0.5pt solid black !important; }
+            .print-thin-border-t { border-top: 0.5pt solid black !important; }
+            .print-thin-border-r { border-right: 0.5pt solid black !important; }
+            .print-thin-border-l { border-left: 0.5pt solid black !important; }
+            
+            /* Table Specifics */
+            table { border-collapse: collapse !important; }
+            
+            /* FORCE ALL TABLE CELLS TO BE THIN 0.5pt */
+            td, th { border: 0.5pt solid black !important; }
+
+            /* Remove borders on the edges of table cells so they don't double-up with the outer container */
+            tr:first-child td, tr:first-child th { border-top: none !important; }
+            tr:last-child td { border-bottom: none !important; }
+            td:first-child, th:first-child { border-left: none !important; }
+            td:last-child, th:last-child { border-right: none !important; }
+
             button { display: none !important; }
         }
     </style>
@@ -239,9 +261,7 @@
                 <div className={`flex flex-col ${className} group`}>
                     <div className="flex justify-between items-center mb-1">
                         {label && <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{label}</label>}
-                        <button onClick={() => onToggle(path)} className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`} tabIndex="-1">
-                            <Icon name={isHidden ? "eye-off" : "eye"} size={12} />
-                        </button>
+                        <button onClick={() => onToggle(path)} className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`} tabIndex="-1"><Icon name={isHidden ? "eye-off" : "eye"} size={12} /></button>
                     </div>
                     <input type={type} value={value || ""} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={`bg-gray-800 border ${isHidden ? 'border-dashed border-gray-700 opacity-60' : 'border-gray-700'} text-gray-200 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none`} />
                 </div>
@@ -254,9 +274,7 @@
                 <div className="flex flex-col group">
                     <div className="flex justify-between items-center mb-1">
                         {label && <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{label}</label>}
-                        <button onClick={() => onToggle(path)} className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`} tabIndex="-1">
-                            <Icon name={isHidden ? "eye-off" : "eye"} size={12} />
-                        </button>
+                        <button onClick={() => onToggle(path)} className={`transition-colors ${isHidden ? "text-gray-600" : "text-blue-400 opacity-0 group-hover:opacity-100"}`} tabIndex="-1"><Icon name={isHidden ? "eye-off" : "eye"} size={12} /></button>
                     </div>
                     <textarea value={value || ""} onChange={e => onChange(e.target.value)} rows={rows} className={`bg-gray-800 border ${isHidden ? 'border-dashed border-gray-700 opacity-60' : 'border-gray-700'} text-gray-200 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none resize-none`} />
                 </div>
@@ -299,15 +317,7 @@
                     return newData;
                 });
             };
-
-            const toggleVisibility = (path) => {
-                setData(prev => {
-                    const newHidden = { ...prev.hidden };
-                    newHidden[path] = !newHidden[path];
-                    return { ...prev, hidden: newHidden };
-                });
-            };
-
+            const toggleVisibility = (path) => { setData(prev => { const newHidden = { ...prev.hidden }; newHidden[path] = !newHidden[path]; return { ...prev, hidden: newHidden }; }); };
             const moveItem = (listKey, index, direction) => {
                 setData(prev => {
                     const list = [...prev[listKey]];
@@ -316,33 +326,18 @@
                     return { ...prev, [listKey]: list };
                 });
             };
-
             const saveToLibrary = () => {
                 const now = Date.now();
                 const newData = { ...data, lastModified: now };
                 setData(newData);
-                setLibrary(prev => {
-                    const existingIdx = prev.findIndex(item => item.id === newData.id);
-                    if (existingIdx >= 0) { const newLib = [...prev]; newLib[existingIdx] = newData; return newLib; }
-                    return [newData, ...prev];
-                });
+                setLibrary(prev => { const idx = prev.findIndex(i => i.id === newData.id); if (idx >= 0) { const n = [...prev]; n[idx] = newData; return n; } return [newData, ...prev]; });
                 alert("Saved!");
             };
             const createNewSheet = () => { setData({ ...initialData, id: generateId(), name: "New Call Sheet", lastModified: Date.now() }); setView('editor'); };
             const loadSheet = (sheet) => { setData(sheet); setView('editor'); };
             const deleteSheet = (id) => { if(confirm("Delete?")) setLibrary(prev => prev.filter(item => item.id !== id)); };
-            const exportJSON = () => {
-                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
-                const anchor = document.createElement('a');
-                anchor.href = dataStr;
-                anchor.download = `${data.name.replace(/\s+/g, '_')}.json`;
-                anchor.click();
-            };
-            const importJSON = (e) => {
-                const fr = new FileReader();
-                fr.readAsText(e.target.files[0]);
-                fr.onload = ev => { try { const parsed = JSON.parse(ev.target.result); parsed.id = generateId(); setData(parsed); saveToLibrary(); setView('editor'); } catch(err) {} };
-            };
+            const exportJSON = () => { const s = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2)); const a = document.createElement('a'); a.href = s; a.download = `${data.name.replace(/\s+/g, '_')}.json`; a.click(); };
+            const importJSON = (e) => { const fr = new FileReader(); fr.readAsText(e.target.files[0]); fr.onload = ev => { try { const p = JSON.parse(ev.target.result); p.id = generateId(); setData(p); saveToLibrary(); setView('editor'); } catch(err) {} }; };
 
             const fetchWeather = async () => {
                 if (!data.general.zipCode) return alert("Enter Zip");
@@ -357,14 +352,11 @@
                     const daily = wData.daily;
                     const sr = new Date(daily.sunrise[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
                     const ss = new Date(daily.sunset[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: false});
-                    setData(p => ({
-                        ...p,
-                        general: { ...p.general, weatherCond: wmoCodeToText(wData.current_weather.weathercode), weatherHigh: Math.round(daily.temperature_2m_max[0]), weatherLow: Math.round(daily.temperature_2m_min[0]), weatherPrecip: daily.precipitation_probability_max[0] + "%", sunrise: sr, sunset: ss }
-                    }));
-                } catch (e) { alert("Weather error"); } 
-                finally { setWeatherLoading(false); }
+                    setData(p => ({ ...p, general: { ...p.general, weatherCond: wmoCodeToText(wData.current_weather.weathercode), weatherHigh: Math.round(daily.temperature_2m_max[0]), weatherLow: Math.round(daily.temperature_2m_min[0]), weatherPrecip: daily.precipitation_probability_max[0] + "%", sunrise: sr, sunset: ss } }));
+                } catch (e) { alert("Weather error"); } finally { setWeatherLoading(false); }
             };
 
+            // ... (Render functions for Editor View) ...
             const renderGeneral = () => (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in">
                     <div className="bg-gray-900 p-6 rounded-lg border border-gray-800 shadow-xl">
@@ -434,6 +426,7 @@
                         <div className="space-y-4">
                             {data.locations.map((loc, idx) => (
                                 <div key={loc.id} className="bg-gray-800/50 p-4 rounded border border-gray-700/50">
+                                    {/* Location fields logic */}
                                     <div className="flex justify-between items-center mb-2">
                                         <select className="bg-gray-900 text-blue-400 text-xs font-bold border border-gray-700 rounded px-2 py-1 uppercase" value={loc.category} onChange={e => {const l=[...data.locations]; l[idx].category=e.target.value; setData(p=>({...p, locations:l}))}}><option value="Set">Set</option><option value="Basecamp">Basecamp</option><option value="Parking">Parking</option></select>
                                         <div className="flex gap-2">
@@ -468,6 +461,7 @@
                         <div className="space-y-2">
                             {data.timeline.map((item, idx) => (
                                 <div key={item.id} className={`flex gap-2 items-start p-2 rounded border ${item.type === 'event' ? 'bg-gray-800/80 border-gray-600' : 'bg-gray-800/30 border-gray-800'}`}>
+                                    {/* Editor UI for Timeline */}
                                     <div className="flex flex-col gap-1 pt-1"><button tabIndex="-1" onClick={() => moveItem('timeline', idx, 'up')} className="text-gray-500 hover:text-white"><Icon name="chevron-up" size={14} /></button><button tabIndex="-1" onClick={() => moveItem('timeline', idx, 'down')} className="text-gray-500 hover:text-white"><Icon name="chevron-down" size={14} /></button></div>
                                     <div className="w-20 pt-1"><input type="time" className="bg-transparent border-b border-gray-500 text-white text-sm w-full" value={item.time} onChange={e => { const t = [...data.timeline]; t[idx].time = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>
                                     {item.type === 'event' ? (<div className="flex-grow flex flex-col gap-1"><input className="bg-transparent border-b border-gray-500 text-white text-sm font-bold uppercase w-full" placeholder="EVENT TITLE" value={item.title} onChange={e => { const t = [...data.timeline]; t[idx].title = e.target.value; setData(p => ({...p, timeline: t})); }} /><input className="bg-transparent border-b border-gray-600 text-gray-400 text-xs w-full" placeholder="Description" value={item.desc} onChange={e => { const t = [...data.timeline]; t[idx].desc = e.target.value; setData(p => ({...p, timeline: t})); }} /></div>) : (<div className="flex-grow grid grid-cols-12 gap-2 text-xs"><div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center font-bold text-blue-400" placeholder="#" value={item.number} onChange={e => { const t = [...data.timeline]; t[idx].number = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center" placeholder="I/E" value={item.intExt} onChange={e => { const t = [...data.timeline]; t[idx].intExt = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-3"><input className="w-full bg-transparent border-b border-gray-700 font-bold uppercase" placeholder="SET" value={item.set} onChange={e => { const t = [...data.timeline]; t[idx].set = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center" placeholder="D/N" value={item.dayNight} onChange={e => { const t = [...data.timeline]; t[idx].dayNight = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center" placeholder="Pgs" value={item.pages} onChange={e => { const t = [...data.timeline]; t[idx].pages = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-1"><input className="w-full bg-transparent border-b border-gray-700 text-center" placeholder="Cast" value={item.cast} onChange={e => { const t = [...data.timeline]; t[idx].cast = e.target.value; setData(p => ({...p, timeline: t})); }} /></div><div className="col-span-4"><input className="w-full bg-transparent border-b border-gray-700 italic text-gray-400" placeholder="Description" value={item.desc} onChange={e => { const t = [...data.timeline]; t[idx].desc = e.target.value; setData(p => ({...p, timeline: t})); }} /></div></div>)}
@@ -653,268 +647,265 @@
                                     <div className="flex items-center gap-2"><button onClick={() => setScale(Math.max(0.4, scale - 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="minus" size={16} /></button><span className="text-xs font-mono w-12 text-center">{Math.round(scale * 100)}%</span><button onClick={() => setScale(Math.min(1.5, scale + 0.1))} className="p-1 hover:bg-gray-700 rounded"><Icon name="plus" size={16} /></button></div><div className="h-4 w-[1px] bg-gray-700"></div><button onClick={() => window.print()} className="flex items-center gap-2 font-bold text-sm text-green-400 hover:text-green-300"><Icon name="printer" size={18} /> PRINT PDF</button>
                                 </div>
 
-                                <div className="print-sheet bg-white text-black shadow-2xl origin-top preview-wrapper relative overflow-hidden" style={{ width: '210mm', minHeight: '297mm', transform: view === 'preview' ? `scale(${scale})` : 'none', marginBottom: '2rem' }}>
+                                <div className="print-sheet bg-white text-black shadow-2xl origin-top preview-wrapper relative overflow-hidden" style={{ width: '8.5in', minHeight: '11in', height: '11in', transform: view === 'preview' ? `scale(${scale})` : 'none', marginBottom: '2rem', marginTop: '2rem' }}>
                                     {data.meta.watermark !== 'NONE' && <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50 opacity-[0.08]"><h1 className="text-[150px] font-black -rotate-45 whitespace-nowrap border-4 border-black px-12 rounded-xl">{data.meta.watermark}</h1></div>}
-                                    <div className="sheet-content relative z-10 h-full flex flex-col justify-between font-sans text-[9px] leading-tight p-[10mm]">
+                                    <div className="sheet-content relative z-10 h-full flex flex-col justify-between font-sans text-[9px] leading-tight">
                                         
-                                        <div className="flex-grow flex flex-col">
-                                            {/* HEADER */}
-                                            <div className="flex border-b-2 border-black pb-2 mb-2">
-                                                <div className="w-[30%] pr-4 border-r border-black flex flex-col justify-start">
-                                                    {!data.hidden['production.company'] && <div className="font-header font-bold text-lg uppercase tracking-tighter leading-none mb-1">{data.production.company}</div>}
-                                                    {!data.hidden['production.studioAddress'] && <div className="text-[8px] mb-2">{data.production.studioAddress}</div>}
-                                                    <div className="space-y-0.5">
-                                                        {!data.hidden['production.producers'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">PROD</span> <span className="font-bold truncate">{data.production.producers}</span></div>}
-                                                        {!data.hidden['production.director'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">DIR</span> <span className="font-bold truncate">{data.production.director}</span></div>}
-                                                        {!data.hidden['production.ad'] && <div className="flex justify-between border-b border-gray-300"><span className="text-gray-500">AD</span> <span className="font-bold truncate">{data.production.ad}</span></div>}
-                                                        <div className="pt-1 text-[8px] text-gray-600">
-                                                            {!data.hidden['production.officePhone'] && <div><span className="font-bold">P:</span> {data.production.officePhone}</div>}
-                                                            {!data.hidden['production.officeEmail'] && <div><span className="font-bold">E:</span> {data.production.officeEmail}</div>}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="w-[40%] text-center px-2 flex flex-col items-center justify-center">
-                                                    {!data.hidden['production.title'] && <h1 className="font-header text-4xl font-black uppercase tracking-widest leading-none mb-2">{data.production.title}</h1>}
-                                                    {!data.hidden['general.crewCall'] && <div className="bg-black text-white font-bold text-lg px-6 py-1 mt-2">GENERAL CALL - {formatTime(data.general.crewCall, data.settings.militaryTime)}</div>}
-                                                </div>
-                                                <div className="w-[30%] pl-4 border-l border-black text-right flex flex-col justify-between">
-                                                    <div className="text-right mb-1">
-                                                        {!data.hidden['general.date'] && <div className="font-header text-xl font-bold uppercase">{formatDate(data.general.date)}</div>}
-                                                        {!data.hidden['general.dayCurrent'] && <div className="bg-gray-200 inline-block px-2 py-0.5 font-bold border border-black mt-1">DAY {data.general.dayCurrent} OF {data.general.dayTotal}</div>}
-                                                    </div>
+                                        {/* HEADER SECTION */}
+                                        <div className="flex border-b-2 print-thick-border-b pb-2 mb-2">
+                                            <div className="w-[30%] pr-4 border-r print-thin-border-r flex flex-col justify-start">
+                                                {!data.hidden['production.company'] && <div className="font-header font-bold text-2xl uppercase tracking-tighter leading-none mb-1">{data.production.company}</div>}
+                                                <div className="space-y-0.5">
+                                                    {!data.hidden['production.producers'] && <div className="flex justify-between border-b print-thin-border-b border-gray-300"><span className="text-gray-500">PROD</span> <span className="font-bold truncate text-[10px]">{data.production.producers}</span></div>}
+                                                    {!data.hidden['production.director'] && <div className="flex justify-between border-b print-thin-border-b border-gray-300"><span className="text-gray-500">DIR</span> <span className="font-bold truncate text-[10px]">{data.production.director}</span></div>}
+                                                    {!data.hidden['production.ad'] && <div className="flex justify-between border-b print-thin-border-b border-gray-300"><span className="text-gray-500">AD</span> <span className="font-bold truncate text-[10px]">{data.production.ad}</span></div>}
                                                     
-                                                    {/* Weather Box */}
-                                                    <div className="bg-black text-white p-2 mb-1 flex justify-between items-center text-[9px]">
-                                                        <div className="text-left leading-tight">
-                                                            <div className="font-bold">{data.general.weatherHigh}° / {data.general.weatherLow}°</div>
-                                                            <div>{data.general.weatherCond}</div>
-                                                            <div>{data.general.weatherPrecip} Rain</div>
-                                                        </div>
-                                                        <div className="text-right leading-tight">
-                                                            <div>SR: {formatTime(data.general.sunrise, data.settings.militaryTime)}</div>
-                                                            <div>SS: {formatTime(data.general.sunset, data.settings.militaryTime)}</div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Key Timings List */}
-                                                    <div className="border-t-2 border-black pt-1">
-                                                        <div className="font-bold underline mb-0.5 text-[9px]">KEY TIMINGS</div>
-                                                        {data.keyTimings.map(kt => (
-                                                            <div key={kt.id} className="flex justify-between font-bold border-b border-gray-300 text-[9px] py-0.5">
-                                                                <span className="text-gray-600 uppercase">{kt.label}</span>
-                                                                <span>{formatTime(kt.time, data.settings.militaryTime)}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
+                                                    {!data.hidden['production.studioAddress'] && <div className="flex justify-between border-b print-thin-border-b border-gray-300"><span className="text-gray-500">ADDR</span> <span className="font-bold truncate text-[10px]">{data.production.studioAddress}</span></div>}
+                                                    {!data.hidden['production.officePhone'] && <div className="flex justify-between border-b print-thin-border-b border-gray-300"><span className="text-gray-500">PHONE</span> <span className="font-bold truncate text-[10px]">{data.production.officePhone}</span></div>}
+                                                    {!data.hidden['production.officeEmail'] && <div className="flex justify-between border-b print-thin-border-b border-gray-300"><span className="text-gray-500">EMAIL</span> <span className="font-bold truncate text-[10px]">{data.production.officeEmail}</span></div>}
                                                 </div>
                                             </div>
-
-                                            {/* MIDDLE SECTION: LOCATIONS (Left) & SCHEDULE (Right) */}
-                                            <div className="flex gap-4 border-b-2 border-black pb-2 mb-2 flex-grow h-auto">
+                                            <div className="w-[40%] text-center px-2 flex flex-col items-center justify-center">
+                                                {!data.hidden['production.title'] && <h1 className="font-header text-4xl font-black uppercase tracking-widest leading-none mb-2">{data.production.title}</h1>}
+                                                {!data.hidden['general.crewCall'] && <div className="bg-black text-white font-bold text-lg px-6 py-1 mt-2">GENERAL CALL - {formatTime(data.general.crewCall, data.settings.militaryTime)}</div>}
+                                            </div>
+                                            <div className="w-[30%] pl-4 border-l print-thin-border-l border-black text-right flex flex-col justify-between">
+                                                <div className="text-right mb-1">
+                                                    {!data.hidden['general.date'] && <div className="font-header text-xl font-bold uppercase">{formatDate(data.general.date)}</div>}
+                                                    {!data.hidden['general.dayCurrent'] && <div className="bg-gray-200 inline-block px-2 py-0.5 font-bold border border-black print-thin-border mt-1">DAY {data.general.dayCurrent} OF {data.general.dayTotal}</div>}
+                                                </div>
                                                 
-                                                {/* LEFT: LOCATIONS */}
-                                                <div className="w-[30%] flex flex-col gap-2">
-                                                    <div className="border-2 border-black flex-grow flex flex-col">
-                                                        <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Locations</div>
-                                                        <div className="p-1 space-y-3 flex-grow">
-                                                            {data.locations.map(loc => {
-                                                                if (data.hidden[`locations.${loc.id}`]) return null;
-                                                                return (
-                                                                    <div key={loc.id} className="relative">
-                                                                        {loc.isMain && <span className="absolute -left-2 top-0 text-black text-[10px]">★</span>}
-                                                                        <div className="font-bold uppercase text-[9px] underline decoration-gray-400">{loc.type}: {loc.name}</div>
-                                                                        <div className="leading-tight mb-1">{loc.address}</div>
-                                                                        {loc.desc && <div className="italic text-gray-500 mb-1">{loc.desc}</div>}
-                                                                        
-                                                                        {/* Sub-Boxes for Details */}
-                                                                        {loc.category === 'Set' && loc.hospital && (
-                                                                            <div className="border border-red-600 p-1 mt-1 text-[8px] text-red-600 font-bold bg-red-50">
+                                                {/* Weather Box */}
+                                                <div className="bg-black text-white p-2 mb-1 flex justify-between items-center text-[9px]">
+                                                    <div className="text-left leading-tight">
+                                                        <div className="font-bold">{data.general.weatherHigh}° / {data.general.weatherLow}°</div>
+                                                        <div>{data.general.weatherCond}</div>
+                                                        <div>{data.general.weatherPrecip} Rain</div>
+                                                    </div>
+                                                    <div className="text-right leading-tight">
+                                                        <div>SR: {formatTime(data.general.sunrise, data.settings.militaryTime)}</div>
+                                                        <div>SS: {formatTime(data.general.sunset, data.settings.militaryTime)}</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Key Timings List */}
+                                                <div className="border-t-2 border-black print-thick-border-t pt-1">
+                                                    <div className="font-bold underline mb-0.5 text-[9px] text-center">KEY TIMINGS</div>
+                                                    {data.keyTimings.map(kt => (
+                                                        <div key={kt.id} className="flex justify-between font-bold border-b border-gray-300 print-thin-border-b text-[9px] py-0.5">
+                                                            <span className="text-gray-600 uppercase">{kt.label}</span>
+                                                            <span>{formatTime(kt.time, data.settings.militaryTime)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* MIDDLE SECTION: LOCATIONS (Left) & SCHEDULE (Right) - FLEX GROW APPLIED HERE */}
+                                        <div className="flex gap-4 border-b-2 border-black print-thick-border-b pb-2 mb-2 flex-grow h-auto">
+                                            
+                                            {/* LEFT: LOCATIONS */}
+                                            <div className="w-[30%] flex flex-col gap-2">
+                                                <div className="border-2 border-black print-thick-border flex-grow flex flex-col">
+                                                    <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Locations</div>
+                                                    <div className="p-1 space-y-3 flex-grow">
+                                                        {data.locations.map(loc => {
+                                                            if (data.hidden[`locations.${loc.id}`]) return null;
+                                                            return (
+                                                                <div key={loc.id} className="relative">
+                                                                    {loc.isMain && <span className="absolute -left-2 top-0 text-black text-[10px]">★</span>}
+                                                                    <div className="font-bold uppercase text-[11px] underline decoration-gray-400">{loc.type}: {loc.name}</div>
+                                                                    <div className="leading-tight">{loc.address}</div>
+                                                                    {loc.desc && <div className="italic text-gray-500 text-[10px]">{loc.desc}</div>}
+                                                                    
+                                                                    {/* Sub-Boxes for Details */}
+                                                                    {loc.category === 'Set' && loc.hospital && (
+                                                                        <div className="border border-red-600 print-thin-border p-1 mt-1 text-[8px] text-red-600 font-bold bg-red-50">
                                                                                 HOSPITAL: {loc.hospital}
-                                                                            </div>
-                                                                        )}
-                                                                        {loc.category === 'Parking' && loc.parkingInstr && (
-                                                                            <div className="border border-black p-1 mt-1 text-[8px] bg-gray-100">
+                                                                        </div>
+                                                                    )}
+                                                                    {loc.category === 'Parking' && loc.parkingInstr && (
+                                                                        <div className="border border-black print-thin-border p-1 mt-1 text-[8px] bg-gray-100">
                                                                                 PARKING: {loc.parkingInstr}
-                                                                            </div>
-                                                                        )}
-                                                                        {loc.category === 'Basecamp' && loc.amenities.length > 0 && (
-                                                                            <div className="border border-black p-1 mt-1 text-[8px] bg-gray-100">
+                                                                        </div>
+                                                                    )}
+                                                                    {loc.category === 'Basecamp' && loc.amenities.length > 0 && (
+                                                                        <div className="border border-black print-thin-border p-1 mt-1 text-[8px] bg-gray-100">
                                                                                 INCLUDES: {loc.amenities.join(', ')}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 </div>
-
-                                                {/* RIGHT: SCHEDULE */}
-                                                <div className="w-[70%] border-2 border-black flex flex-col">
-                                                    <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Schedule</div>
-                                                    <table className="w-full text-left border-collapse">
-                                                        <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black">
-                                                            <tr>
-                                                                <th className="px-1 w-12 text-right border-r border-black">Time</th>
-                                                                <th className="px-1 w-6 text-center border-r border-black">#</th>
-                                                                <th className="px-1 w-6 text-center border-r border-black">I/E</th>
-                                                                <th className="px-1 border-r border-black">Set / Description</th>
-                                                                <th className="px-1 w-6 text-center border-r border-black">D/N</th>
-                                                                <th className="px-1 w-8 text-center border-r border-black">Pgs</th>
-                                                                <th className="px-1 w-8 text-center">Cast</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-gray-400">
-                                                            {data.timeline.map(item => {
-                                                                if (data.hidden[`timeline.${item.id}`]) return null;
-                                                                if (item.type === 'event') {
-                                                                    return (
-                                                                        <tr key={item.id} className="bg-gray-100 font-bold border-t border-black border-b border-black text-[9px]">
-                                                                            <td className="px-1 text-right border-r border-black bg-gray-300">{formatTime(item.time, data.settings.militaryTime)}</td>
-                                                                            <td colSpan="6" className="px-2 uppercase">
-                                                                                <span className="mr-2">{item.title}</span>
-                                                                                {item.desc && <span className="font-normal italic text-gray-600 normal-case">- {item.desc}</span>}
-                                                                            </td>
-                                                                        </tr>
-                                                                    );
-                                                                } else {
-                                                                    return (
-                                                                        <tr key={item.id} className="text-[9px]">
-                                                                            <td className="px-1 text-right border-r border-black font-bold">{formatTime(item.time, data.settings.militaryTime)}</td>
-                                                                            <td className="px-1 text-center font-bold border-r border-black">{item.number}</td>
-                                                                            <td className="px-1 text-center border-r border-black">{item.intExt}</td>
-                                                                            <td className="px-1 border-r border-black">
-                                                                                <span className="font-bold uppercase">{item.set}</span>
-                                                                                <span className="block italic text-gray-600 leading-none pb-0.5">{item.desc}</span>
-                                                                            </td>
-                                                                            <td className="px-1 text-center border-r border-black">{item.dayNight}</td>
-                                                                            <td className="px-1 text-center border-r border-black">{item.pages}</td>
-                                                                            <td className="px-1 text-center font-bold">{item.cast}</td>
-                                                                        </tr>
-                                                                    );
-                                                                }
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
                                             </div>
 
-                                            {/* LOWER SECTION: CAST & EXTRAS SIDE-BY-SIDE */}
-                                            <div className="flex gap-2 mb-2 h-auto">
-                                                <div className="w-[70%] border-2 border-black">
-                                                    <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Cast</div>
-                                                    <table className="w-full text-center border-collapse">
-                                                        <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black">
-                                                            <tr>
-                                                                <th className="border-r border-black w-6">#</th>
-                                                                <th className="border-r border-black text-left px-1">Character</th>
-                                                                <th className="border-r border-black text-left px-1">Talent</th>
-                                                                <th className="border-r border-black w-8">Stat</th>
-                                                                <th className="border-r border-black w-10">Pickup</th>
-                                                                <th className="border-r border-black w-10">H/M/W</th>
-                                                                <th className="border-r border-black w-10">Call</th>
-                                                                <th className="w-10 bg-gray-300">Set</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-gray-400">
-                                                            {data.cast.map(c => {
-                                                                if(data.hidden[`cast.${c.id}`]) return null;
-                                                                return (
-                                                                    <tr key={c.id} className="text-[9px]">
-                                                                        <td className="border-r border-black font-bold">{c.idNum}</td>
-                                                                        <td className="border-r border-black text-left px-1 font-bold uppercase">{c.character}</td>
-                                                                        <td className="border-r border-black text-left px-1 truncate max-w-[100px]">{c.name}</td>
-                                                                        <td className="border-r border-black">{c.status}</td>
-                                                                        <td className="border-r border-black">{formatTime(c.pickup, data.settings.militaryTime)}</td>
-                                                                        <td className="border-r border-black">{formatTime(c.hmw, data.settings.militaryTime)}</td>
-                                                                        <td className="border-r border-black">{formatTime(c.call, data.settings.militaryTime)}</td>
-                                                                        <td className="font-bold bg-gray-100">{formatTime(c.set, data.settings.militaryTime)}</td>
-                                                                    </tr>
-                                                                )
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                                
-                                                <div className="w-[30%] border-2 border-black">
-                                                    <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Extras</div>
-                                                    <table className="w-full text-center border-collapse">
-                                                        <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black">
-                                                            <tr>
-                                                                <th className="border-r border-black w-8">#</th>
-                                                                <th className="border-r border-black text-left px-1">Description</th>
-                                                                <th className="w-12">Call</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-gray-400">
-                                                            {data.extras.map(ex => (
-                                                                <tr key={ex.id} className="text-[9px]">
-                                                                    <td className="border-r border-black font-bold">{ex.count}</td>
-                                                                    <td className="border-r border-black text-left px-1 truncate max-w-[100px]">
-                                                                        {ex.desc}
-                                                                        {ex.notes && <span className="block italic text-[7px] text-gray-500">{ex.notes}</span>}
-                                                                    </td>
-                                                                    <td>{formatTime(ex.call, data.settings.militaryTime)}</td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-
-                                            {/* CREW - SINGLE FULL WIDTH LIST */}
-                                            <div className="mb-2 border-2 border-black w-full">
-                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Crew</div>
+                                            {/* RIGHT: SCHEDULE */}
+                                            <div className="w-[70%] border-2 border-black print-thick-border flex flex-col">
+                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Schedule</div>
                                                 <table className="w-full text-left border-collapse">
-                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black">
+                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black print-thick-border-b">
                                                         <tr>
-                                                            <th className="border-r border-black px-1 w-[20%]">Dept</th>
-                                                            <th className="border-r border-black px-1 w-[25%]">Role</th>
-                                                            <th className="border-r border-black px-1 w-[25%]">Name</th>
-                                                            <th className="w-12 text-center bg-gray-300 border-r border-black">Call</th>
-                                                            <th className="px-1 text-center">Notes</th>
+                                                            <th className="px-1 w-12 text-right border-r border-black print-thin-border-r">Time</th>
+                                                            <th className="px-1 w-6 text-center border-r border-black print-thin-border-r">#</th>
+                                                            <th className="px-1 w-6 text-center border-r border-black print-thin-border-r">I/E</th>
+                                                            <th className="px-1 border-r border-black print-thin-border-r">Set / Description</th>
+                                                            <th className="px-1 w-6 text-center border-r border-black print-thin-border-r">D/N</th>
+                                                            <th className="px-1 w-8 text-center border-r border-black print-thin-border-r">Pgs</th>
+                                                            <th className="px-1 w-8 text-center">Cast</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-gray-400">
-                                                        {data.crew.map(c => {
-                                                            if(data.hidden[`crew.${c.id}`]) return null;
-                                                            return (
-                                                                <tr key={c.id} className="text-[9px]">
-                                                                    <td className="border-r border-black px-1 font-bold uppercase">{c.dept}</td>
-                                                                    <td className="border-r border-black px-1">{c.position}</td>
-                                                                    <td className="border-r border-black px-1 truncate">{c.name}</td>
-                                                                    <td className="text-center font-bold bg-gray-100 border-r border-black">{formatTime(c.call, data.settings.militaryTime)}</td>
-                                                                    <td className="px-1 italic text-gray-500">{c.notes}</td>
-                                                                </tr>
-                                                            )
+                                                        {data.timeline.map(item => {
+                                                            if (data.hidden[`timeline.${item.id}`]) return null;
+                                                            if (item.type === 'event') {
+                                                                return (
+                                                                    <tr key={item.id} className="bg-gray-100 font-bold border-t border-black print-thin-border-t border-b print-thin-border-b text-[9px]">
+                                                                        <td className="px-1 text-right border-r border-black print-thin-border-r bg-gray-300">{formatTime(item.time, data.settings.militaryTime)}</td>
+                                                                        <td colSpan="6" className="px-2 uppercase">
+                                                                            <span className="mr-2">{item.title}</span>
+                                                                            {item.desc && <span className="font-normal italic text-gray-600 normal-case">- {item.desc}</span>}
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            } else {
+                                                                return (
+                                                                    <tr key={item.id} className="text-[9px]">
+                                                                        <td className="px-1 text-right border-r border-black print-thin-border-r font-bold">{formatTime(item.time, data.settings.militaryTime)}</td>
+                                                                        <td className="px-1 text-center font-bold border-r border-black print-thin-border-r">{item.number}</td>
+                                                                        <td className="px-1 text-center border-r border-black print-thin-border-r">{item.intExt}</td>
+                                                                        <td className="px-1 border-r border-black print-thin-border-r">
+                                                                            <span className="font-bold uppercase">{item.set}</span>
+                                                                            <span className="block italic text-gray-600 leading-none pb-0.5">{item.desc}</span>
+                                                                        </td>
+                                                                        <td className="px-1 text-center border-r border-black print-thin-border-r">{item.dayNight}</td>
+                                                                        <td className="px-1 text-center border-r border-black print-thin-border-r">{item.pages}</td>
+                                                                        <td className="px-1 text-center font-bold">{item.cast}</td>
+                                                                    </tr>
+                                                                );
+                                                            }
                                                         })}
                                                     </tbody>
                                                 </table>
                                             </div>
                                         </div>
 
+                                        {/* LOWER SECTION: CAST & EXTRAS SIDE-BY-SIDE */}
+                                        <div className="flex gap-2 mb-2 h-auto">
+                                            <div className="w-[70%] border-2 border-black print-thick-border">
+                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Cast</div>
+                                                <table className="w-full text-center border-collapse">
+                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black print-thick-border-b">
+                                                        <tr>
+                                                            <th className="border-r border-black print-thin-border-r w-6">#</th>
+                                                            <th className="border-r border-black print-thin-border-r text-left px-1">Character</th>
+                                                            <th className="border-r border-black print-thin-border-r text-left px-1">Talent</th>
+                                                            <th className="border-r border-black print-thin-border-r w-8">Stat</th>
+                                                            <th className="border-r border-black print-thin-border-r w-10">Pickup</th>
+                                                            <th className="border-r border-black print-thin-border-r w-10">H/M/W</th>
+                                                            <th className="border-r border-black print-thin-border-r w-10">Call</th>
+                                                            <th className="w-10 bg-gray-300">Set</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-400">
+                                                        {data.cast.map(c => {
+                                                            if(data.hidden[`cast.${c.id}`]) return null;
+                                                            return (
+                                                                <tr key={c.id} className="text-[9px]">
+                                                                    <td className="border-r border-black print-thin-border-r font-bold">{c.idNum}</td>
+                                                                    <td className="border-r border-black print-thin-border-r text-left px-1 font-bold uppercase">{c.character}</td>
+                                                                    <td className="border-r border-black print-thin-border-r text-left px-1 truncate max-w-[100px]">{c.name}</td>
+                                                                    <td className="border-r border-black print-thin-border-r">{c.status}</td>
+                                                                    <td className="border-r border-black print-thin-border-r">{formatTime(c.pickup, data.settings.militaryTime)}</td>
+                                                                    <td className="border-r border-black print-thin-border-r">{formatTime(c.hmw, data.settings.militaryTime)}</td>
+                                                                    <td className="border-r border-black print-thin-border-r">{formatTime(c.call, data.settings.militaryTime)}</td>
+                                                                    <td className="font-bold bg-gray-100">{formatTime(c.set, data.settings.militaryTime)}</td>
+                                                                </tr>
+                                                            )
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            
+                                            <div className="w-[30%] border-2 border-black print-thick-border">
+                                                <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Extras</div>
+                                                <table className="w-full text-center border-collapse">
+                                                    <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black print-thick-border-b">
+                                                        <tr>
+                                                            <th className="border-r border-black print-thin-border-r w-8">#</th>
+                                                            <th className="border-r border-black print-thin-border-r text-left px-1">Description</th>
+                                                            <th className="w-12">Call</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-400">
+                                                        {data.extras.map(ex => (
+                                                            <tr key={ex.id} className="text-[9px]">
+                                                                <td className="border-r border-black print-thin-border-r font-bold">{ex.count}</td>
+                                                                <td className="border-r border-black print-thin-border-r text-left px-1 truncate max-w-[100px]">
+                                                                    {ex.desc}
+                                                                    {ex.notes && <span className="block italic text-[7px] text-gray-500">{ex.notes}</span>}
+                                                                </td>
+                                                                <td>{formatTime(ex.call, data.settings.militaryTime)}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        {/* CREW - SINGLE FULL WIDTH LIST */}
+                                        <div className="mb-2 border-2 border-black print-thick-border w-full">
+                                            <div className="bg-black text-white font-bold px-1 py-0.5 text-center text-[9px] tracking-widest uppercase">Crew</div>
+                                            <table className="w-full text-left border-collapse">
+                                                <thead className="bg-gray-200 text-[8px] font-bold uppercase border-b-2 border-black print-thick-border-b">
+                                                    <tr>
+                                                        <th className="border-r border-black print-thin-border-r px-1 w-[20%]">Dept</th>
+                                                        <th className="border-r border-black print-thin-border-r px-1 w-[25%]">Role</th>
+                                                        <th className="border-r border-black print-thin-border-r px-1 w-[25%]">Name</th>
+                                                        <th className="w-12 text-center bg-gray-300 border-r border-black print-thin-border-r">Call</th>
+                                                        <th className="px-1 text-center">Notes</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-400">
+                                                    {data.crew.map(c => {
+                                                        if(data.hidden[`crew.${c.id}`]) return null;
+                                                        return (
+                                                            <tr key={c.id} className="text-[9px]">
+                                                                <td className="border-r border-black print-thin-border-r px-1 font-bold uppercase">{c.dept}</td>
+                                                                <td className="border-r border-black print-thin-border-r px-1">{c.position}</td>
+                                                                <td className="border-r border-black print-thin-border-r px-1 truncate">{c.name}</td>
+                                                                <td className="text-center font-bold bg-gray-100 border-r border-black print-thin-border-r">{formatTime(c.call, data.settings.militaryTime)}</td>
+                                                                <td className="px-1 italic text-gray-500">{c.notes}</td>
+                                                            </tr>
+                                                        )
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
                                         {/* FOOTER */}
-                                        <div className="mt-auto pt-1 w-full">
-                                            <div className="flex gap-2 text-[9px] mb-2 h-auto">
+                                        <div className="mt-auto pt-1 w-full flex-col">
+                                            <div className="flex gap-2 text-[9px] mb-2 items-stretch h-full">
                                                 {/* General Notes (Left - 30%) */}
-                                                <div className="w-[30%] border border-black p-1 bg-gray-50 h-full flex flex-col">
+                                                <div className="w-[30%] border border-black print-thin-border p-1 bg-gray-50 flex flex-col">
                                                     <div className="font-bold underline mb-1">GENERAL NOTES:</div>
                                                     <div className="flex-grow whitespace-pre-wrap leading-tight">{!data.hidden['notes.general'] && (data.notes?.general || "")}</div>
                                                     
                                                     {/* Safety at bottom of general notes box */}
-                                                    <div className="mt-2 border-t border-black pt-1">
+                                                    <div className="mt-2 border-t border-black print-thin-border-t pt-1">
                                                         {!data.hidden['general.safetyNotes'] && <div className="font-bold text-red-600">SAFETY: {data.general.safetyNotes}</div>}
                                                     </div>
                                                 </div>
                                                 
                                                 {/* Dept Notes (Right - 70%) */}
-                                                <div className="w-[70%] border border-black p-1 h-full">
+                                                <div className="w-[70%] border border-black print-thin-border p-1 flex flex-col">
                                                     <div className="font-bold underline mb-1 uppercase text-[9px]">Department Notes</div>
                                                     <div className="grid grid-cols-2 gap-2">
                                                         {data.deptNotes.map(dn => {
                                                             if(data.hidden[`deptNote.${dn.id}`]) return null;
                                                             return (
-                                                                <div key={dn.id} className="border border-gray-400 p-1 text-[8px] break-inside-avoid">
+                                                                <div key={dn.id} className="border border-gray-400 print-thin-border p-1 text-[8px] break-inside-avoid">
                                                                     <span className="font-bold underline uppercase">{dn.category}:</span> {dn.note}
                                                                 </div>
                                                             )
@@ -923,8 +914,8 @@
                                                 </div>
                                             </div>
 
-                                            {/* Bottom Bar */}
-                                            <div className="bg-black text-white p-1 text-[8px] flex justify-between items-center h-[24px]">
+                                            {/* Bottom Bar - Flex Shrink 0 to prevent squashing */}
+                                            <div className="bg-black text-white p-1 text-[8px] flex justify-between items-center h-[24px] flex-shrink-0">
                                                 <div className="flex gap-2 font-mono items-center w-1/3">
                                                     {!data.hidden['notes.walkies'] && data.walkies.map(w => <span key={w.ch} className="bg-gray-800 px-1 border border-gray-500 rounded-sm">CH{w.ch}: {w.desc}</span>)}
                                                 </div>
